@@ -15,8 +15,10 @@ import Notifications from "./pages/Notifications"
 import AdCenter from "./pages/AdCenter"
 import Messages from "./pages/Messages"
 import MessageDetail from "./pages/MessageDetail"
+import VideoCallPage from "./pages/VideoCallPage"
 import NotFound from "./pages/NotFound"
 import ProtectedRoute from "./components/ProtectedRoute"
+import MainLayout from "./components/MainLayout" // Import MainLayout
 
 function Logout() {
     localStorage.clear()
@@ -28,99 +30,44 @@ function RegisterAndLogout() {
     return <Register />
 }
 
+// Helper component to wrap routes with MainLayout and ProtectedRoute
+const ProtectedLayout = ({ children }) => {
+    return (
+        <ProtectedRoute>
+            <MainLayout>
+                {children}
+            </MainLayout>
+        </ProtectedRoute>
+    );
+};
+
 function App() {
   return (
       <BrowserRouter>
           <Routes>
+              {/* Routes with MainLayout */}
+              <Route path="/" element={<ProtectedLayout><Home /></ProtectedLayout>} />
+              <Route path="/friends" element={<ProtectedLayout><FriendsFeed /></ProtectedLayout>} />
+              <Route path="/edit-profile" element={<ProtectedLayout><ProfileEdit /></ProtectedLayout>} />
+              <Route path="/search" element={<ProtectedLayout><Search /></ProtectedLayout>} />
+              <Route path="/edit-store" element={<ProtectedLayout><ProfileStoreEdit /></ProtectedLayout>} />
+              <Route path="/settings" element={<ProtectedLayout><ProfileSettings /></ProtectedLayout>} />
+              <Route path="/create-post" element={<ProtectedLayout><CreatePost /></ProtectedLayout>} />
+              <Route path="/notifications" element={<ProtectedLayout><Notifications /></ProtectedLayout>} />
+              <Route path="/ad-center" element={<ProtectedLayout><AdCenter /></ProtectedLayout>} />
+              <Route path="/messages" element={<ProtectedLayout><Messages /></ProtectedLayout>} />
+              <Route path="/messages/:userId" element={<ProtectedLayout><MessageDetail /></ProtectedLayout>} />
+              <Route path="/profile" element={<ProtectedLayout><Profile /></ProtectedLayout>} />
+
+              {/* VideoCallPage might be better full-screen, but for now include in layout for theme consistency */}
               <Route 
-                  path="/" 
-                  element={
-                      <ProtectedRoute>
-                          <Home />
-                      </ProtectedRoute>
-                  }  
+                  path="/video-call/:roomId/:callSessionIdParam/:action"
+                  element={<ProtectedLayout><VideoCallPage /></ProtectedLayout>}
               />
-              <Route
-                  path="/friends"
-                  element={
-                      <ProtectedRoute>
-                          <FriendsFeed />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/edit-profile"
-                  element={
-                      <ProtectedRoute>
-                          <ProfileEdit />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/search"
-                  element={
-                      <ProtectedRoute>
-                          <Search />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/edit-store"
-                  element={
-                      <ProtectedRoute>
-                          <ProfileStoreEdit />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/settings"
-                  element={
-                      <ProtectedRoute>
-                          <ProfileSettings />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/create-post"
-                  element={
-                      <ProtectedRoute>
-                          <CreatePost />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/notifications"
-                  element={
-                      <ProtectedRoute>
-                          <Notifications />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/ad-center"
-                  element={
-                      <ProtectedRoute>
-                          <AdCenter />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/messages"
-                  element={
-                      <ProtectedRoute>
-                          <Messages />
-                      </ProtectedRoute>
-                  }
-              />
-              <Route
-                  path="/message-detail"
-                  element={
-                      <ProtectedRoute>
-                          <MessageDetail />
-                      </ProtectedRoute>
-                  }
-              />
+
+              {/* Routes without MainLayout */}
               <Route path="/login" element={<Login />} />
+              <Route path="/logout" element={<Logout />} />
               <Route path="/register" element={<RegisterAndLogout />} />
               <Route path="*" element={<NotFound />} />
           </Routes>

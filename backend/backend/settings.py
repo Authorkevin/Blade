@@ -57,7 +57,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'api',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'djoser',
     'corsheaders',
+    'chat',
+    'recommender', # Add the new recommender app
 ]
 
 MIDDLEWARE = [
@@ -158,3 +162,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+
+# Stripe API Keys (use environment variables in production)
+STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', 'pk_test_YOUR_PUBLISHABLE_KEY')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', 'sk_test_YOUR_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', 'whsec_YOUR_WEBHOOK_SECRET') # For verifying webhook signatures
+DEFAULT_CURRENCY_STRIPE_PAID_CALLS = os.getenv('DEFAULT_CURRENCY_STRIPE_PAID_CALLS', 'usd')
+PLATFORM_FEE_PERCENTAGE_STRIPE_PAID_CALLS = os.getenv('PLATFORM_FEE_PERCENTAGE_STRIPE_PAID_CALLS', '0.20') # e.g. 20%
