@@ -43,7 +43,7 @@ const ProtectedLayout = ({ children }) => {
 
 function App() {
   return (
-      <BrowserRouter>
+     
           <Routes>
               {/* Routes with MainLayout */}
               <Route path="/" element={<ProtectedLayout><Home /></ProtectedLayout>} />
@@ -71,7 +71,7 @@ function App() {
               <Route path="/register" element={<RegisterAndLogout />} />
               <Route path="*" element={<NotFound />} />
           </Routes>
-      </BrowserRouter>
+     
   )
 }
 
