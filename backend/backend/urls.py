@@ -27,6 +27,7 @@ urlpatterns = [
     path('api-auth/', include('rest_framework.urls')), # For browsable API login/logout
     path('auth/', include('djoser.urls')),
     path('auth/', include('djoser.urls.jwt')),
+    path('api/', include('api.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/recommender/', include('recommender.urls')), # Add recommender app URLs
 ]
