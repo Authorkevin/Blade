@@ -16,13 +16,17 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from api.views import CreateUserView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+# from api.views import CreateUserView # Replaced by Djoser
+# from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView # Replaced by Djoser JWT URLs
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/user/register/', CreateUserView.as_view(), name='register'),
-    path('api/token/', TokenObtainPairView.as_view(), name='get_token'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='refresh_token'),
-    path('api-auth/', include('rest_framework.urls'))
+    # path('api/user/register/', CreateUserView.as_view(), name='register'), # Replaced by Djoser
+    # path('api/token/', TokenObtainPairView.as_view(), name='get_token'), # Replaced by Djoser
+    # path('api/token/refresh/', TokenRefreshView.as_view(), name='refresh_token'), # Replaced by Djoser
+    path('api-auth/', include('rest_framework.urls')), # For browsable API login/logout
+    path('auth/', include('djoser.urls')),
+    path('auth/', include('djoser.urls.jwt')),
+    path('api/chat/', include('chat.urls')),
+    path('api/recommender/', include('recommender.urls')), # Add recommender app URLs
 ]
