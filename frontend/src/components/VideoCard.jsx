@@ -9,7 +9,7 @@ const VideoCard = ({ video }) => {
         backgroundColor: '#1e1e1e', // Dark card background
         border: '1px solid #333',    // Slightly lighter border
         borderRadius: '8px',
-        padding: '16px',
+        padding: '0px',
         marginBottom: '16px',
         boxShadow: '0 4px 8px rgba(0,0,0,0.3)', // More pronounced shadow for cards
     };
@@ -55,7 +55,7 @@ const VideoCard = ({ video }) => {
         fontWeight: 'bold',
         transition: 'background-color 0.2s ease, transform 0.1s ease',
         ':hover': { // Pseudo-selector for hover needs actual CSS or more complex JS handling
-            // backgroundColor: variant === 'primary' ? '#018786' : '#4f4f4f',
+        backgroundColor: variant === 'primary' ? '#018786' : '#4f4f4f',
             // transform: 'scale(1.03)',
         }
     });

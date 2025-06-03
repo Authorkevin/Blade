@@ -16,7 +16,7 @@ const HomePage = () => {
                 setRecommendations(videos);
             } catch (err) {
                 console.error("Failed to fetch recommendations:", err);
-                setError('Could not load recommendations. Please try again later.');
+                setError('Something went wrong. Please try again later.');
                 setRecommendations([]); // Ensure it's an empty array on error
             } finally {
                 setIsLoading(false);
@@ -28,7 +28,7 @@ const HomePage = () => {
 
     // Basic styles for dark theme consistency
     const pageStyle = {
-        padding: '20px',
+        padding: '0px',
     };
     const headingStyle = {
         color: '#bb86fc',
@@ -41,7 +41,7 @@ const HomePage = () => {
     const feedContainerStyle = {
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', // Responsive grid
-        gap: '20px',
+        gap: '0px',
     };
      const loadingStyle = {
         textAlign: 'center',

@@ -4,12 +4,13 @@ import axios from 'axios';
 const LoginPage = () => {
     const [formData, setFormData] = useState({
         email: '',
+        username: '',
         password: ''
     });
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
-    const { email, password } = formData;
+    const { email, username, password } = formData;
 
     const onChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -22,6 +23,7 @@ const LoginPage = () => {
             // Djoser endpoint for JWT token creation
             const res = await axios.post('http://localhost:8000/auth/jwt/create/', {
                 email,
+                username,
                 password
             });
             localStorage.setItem('access', res.data.access);
@@ -48,6 +50,16 @@ const LoginPage = () => {
                         placeholder="Email"
                         name="email"
                         value={email}
+                        onChange={onChange}
+                        required
+                    />
+                </div>
+                <div>
+                    <input
+                        type="text"
+                        placeholder="Username"
+                        name="username"
+                        value={username}
                         onChange={onChange}
                         required
                     />
