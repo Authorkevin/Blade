@@ -9,6 +9,7 @@ function ProfileStoreEdit() {
     const [productType, setProductType] = useState('physical');
     const [image, setImage] = useState(null); // Added for image file
     const [video, setVideo] = useState(null); // Added for video file
+    const [digitalFile, setDigitalFile] = useState(null); // Added for digital file
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState('');
@@ -20,6 +21,10 @@ function ProfileStoreEdit() {
 
     const handleVideoChange = (e) => {
         setVideo(e.target.files[0]);
+    };
+
+    const handleDigitalFileChange = (e) => {
+        setDigitalFile(e.target.files[0]);
     };
 
     const handleSubmit = async (e) => {
@@ -39,6 +44,9 @@ function ProfileStoreEdit() {
         if (video) {
             formData.append('video', video);
         }
+        if (productType === 'digital' && digitalFile) {
+            formData.append('digital_file', digitalFile);
+        }
 
         try {
             // The Content-Type header will be automatically set to multipart/form-data by Axios
@@ -51,9 +59,11 @@ function ProfileStoreEdit() {
             setProductType('physical');
             setImage(null);
             setVideo(null);
+            setDigitalFile(null);
             // Clear file input fields visually (if needed, by resetting the form or input value)
             if (document.getElementById('image')) document.getElementById('image').value = null;
             if (document.getElementById('video')) document.getElementById('video').value = null;
+            if (document.getElementById('digital_file')) document.getElementById('digital_file').value = null;
 
             console.log('Product created:', response.data);
             // Optional: Navigate or give feedback
@@ -141,6 +151,16 @@ function ProfileStoreEdit() {
                         onChange={handleVideoChange}
                     />
                 </div>
+                {productType === 'digital' && (
+                    <div>
+                        <label htmlFor="digital_file">Digital File:</label>
+                        <input
+                            type="file"
+                            id="digital_file"
+                            onChange={handleDigitalFileChange}
+                        />
+                    </div>
+                )}
                 <button type="submit" disabled={isLoading}>
                     {isLoading ? 'Creating...' : 'Create Product'}
                 </button>
