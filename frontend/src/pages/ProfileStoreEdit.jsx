@@ -50,7 +50,7 @@ function ProfileStoreEdit() {
 
         try {
             // The Content-Type header will be automatically set to multipart/form-data by Axios
-            const response = await api.post('/add-products/', formData);
+            const response = await api.post('add-products/', formData);
             setSuccessMessage(`Product "${response.data.name}" created successfully!`);
             // Clear form
             setName('');

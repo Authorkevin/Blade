@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 # from api.views import CreateUserView # Replaced by Djoser
 # from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView # Replaced by Djoser JWT URLs
 
@@ -31,3 +33,6 @@ urlpatterns = [
     path('api/chat/', include('chat.urls')),
     path('api/recommender/', include('recommender.urls')), # Add recommender app URLs
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -19,7 +19,7 @@ function ProfileStore() {
             }
             try {
                 setLoading(true);
-                const response = await api.get(`/products/?user_id=${userId}`);
+                const response = await api.get(`/add-products/?user_id=${userId}`);
 
                 // Handle paginated response
                 if (response.data && Array.isArray(response.data.results)) {

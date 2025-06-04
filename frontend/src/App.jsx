@@ -9,6 +9,7 @@ import ProfileStore from './pages/ProfileStore';
 import ProfileStoreEdit from './pages/ProfileStoreEdit';
 import ProfilePage from './pages/Profile';
 import CreatePost from './pages/CreatePost';
+import RegisterPage from './pages/Register';
 
 function Logout() {
   localStorage.clear();
@@ -20,6 +21,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/logout" element={<Logout />} />
         <Route path="/" element={<ProtectedRoute><MainLayout><Home /></MainLayout></ProtectedRoute>} />
         {/* Route for specific user's profile */}

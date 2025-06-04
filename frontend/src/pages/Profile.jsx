@@ -66,7 +66,7 @@ const ProfilePage = () => {
                 if (targetUserId === loggedInUser.id) {
                     // Fetch own profile data (as it might have more details like email only visible to self)
                     // and ensure profile picture is up-to-date
-                    const ownProfileResponse = await api.get('/profile/'); // Fetches UserProfile specific data
+                    const ownProfileResponse = await api.get('profile/'); // Fetches UserProfile specific data
                     const baseLoggedInUser = getPlaceholderUserData(); // Gets ID, username from localStorage
 
                     let picUrl = baseLoggedInUser.profile_picture_url; // Start with localStorage
@@ -97,7 +97,8 @@ const ProfilePage = () => {
                     // This should hit an endpoint like /api/users/<targetUserId>/
                     // For now, simulate:
                     console.warn(`Simulating fetch for user ID: ${targetUserId}. Replace with actual API call.`);
-                    const userDetailResponse = await api.get(`/users/${targetUserId}/follow/`); // Use follow endpoint to get is_following
+                    // Assuming VITE_API_URL is "http://localhost:8000/api", then 'users/...' is correct
+                    const userDetailResponse = await api.get(`users/${targetUserId}/follow/`); // Use follow endpoint to get is_following
                     // This is not ideal, should be one endpoint for user details.
                     // This is just to get *some* data for the follow button.
                     fetchedProfileData = {
@@ -114,7 +115,7 @@ const ProfilePage = () => {
                 setProfileError(null);
 
                 // Fetch posts for this profile
-                const postsResponse = await api.get(`/posts/?user_id=${targetUserId}`);
+                const postsResponse = await api.get(`posts/?user_id=${targetUserId}`);
                 setPosts(postsResponse.data.results || postsResponse.data);
                 setPostsError(null);
 
@@ -129,7 +130,7 @@ const ProfilePage = () => {
             }
         };
 
-        // setLoggedInUser(getPlaceholderUserData());  Refresh loggedInUser state first
+        // setLoggedInUser(getPlaceholderUserData()); // This line is redundant, loggedInUser is already initialized and updated via its own state logic if necessary.
         loadProfileData();
 
     }, [userIdParam, loggedInUser.id]); // Re-run if userIdParam changes or loggedInUser.id changes (e.g. after login)
@@ -157,7 +158,7 @@ const ProfilePage = () => {
 
         try {
             // PATCH to /api/profile/ as it's for the logged-in user's UserProfile
-            const response = await api.patch('/profile/', formData, {
+            const response = await api.patch('profile/', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -195,7 +196,7 @@ const ProfilePage = () => {
         }
     };
 
-    // Basic styles for dark theme (assuming these are defined or imported elsewhere for brevity)
+    // Basic styles for dark theme
     const pageStyle = {
         padding: '20px',
         fontFamily: 'Arial, sans-serif', // Basic font
@@ -235,12 +236,12 @@ const ProfilePage = () => {
         marginRight: '10px',
     };
 
-
     const handleFollowToggle = async () => {
         if (!profileData || !loggedInUser || loggedInUser.id === profileData.id) return;
 
         try {
-            await api.post(`/users/${profileData.id}/follow/`);
+            // Assuming VITE_API_URL is "http://localhost:8000/api", then 'users/...' is correct
+            await api.post(`users/${profileData.id}/follow/`);
             // Update follow state and counts locally
             setProfileData(prevData => ({
                 ...prevData,
@@ -322,16 +323,17 @@ const ProfilePage = () => {
                           onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#03dac5'}>
                          View My Store
                     </Link>
-                    <Link to="/create-post" style={linkStyle}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#018786'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#03dac5'}>
-                        Create Post
+                    <Link to="/create-post"
+                          style={linkStyle}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#018786'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#03dac5'}>
+                         Create New Post
                     </Link>
                 </>
              )}
             </div>
 
-
+            {/* SECTION B - Correct posts section starts here */}
             <section style={{ ...sectionStyle, marginTop: '20px' }}>
                 <h3 style={{ ...headingStyle, fontSize: '1.5em', borderTop: '1px solid #333', paddingTop: '20px', marginBottom: '20px' }}>
                     {isOwnProfile ? "My Posts" : `${profileData.username}'s Posts`}
@@ -340,26 +342,41 @@ const ProfilePage = () => {
                 {postsError && <p style={{ color: 'red' }}>{postsError}</p>}
                 {!postsLoading && !postsError && posts.length === 0 && <p>No posts yet.</p>}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-                    {posts.map(post => (
-                        <div key={post.id} style={{ border: '1px solid #444', borderRadius: '8px', padding: '15px', backgroundColor: '#2a2a2a' }}>
-                            {post.image && (
-                                <img
-                                    src={post.image}
-                                    alt={`Post by ${post.user}`}
-                                    style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '4px', marginBottom: '10px' }}
-                                />
-                            )}
-                            {post.video && (
-                                <video
-                                    src={post.video}
-                                    controls
-                                    style={{ width: '100%', height: '200px', borderRadius: '4px', marginBottom: '10px', backgroundColor: '#000' }}
-                                >
-                                    Your browser does not support the video tag.
-                                </video>
-                            )}
-                            <h4 style={{ color: '#bb86fc', margin: '0 0 5px 0', fontSize: '1.1em' }}>
-                                <Link to={`/profile/${post.user_id}`} style={{ color: '#bb86fc', textDecoration: 'none' }}>
+                    {posts.map(post => {
+                        let imageUrl = post.image;
+                        if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('blob:')) {
+                            const baseApiUrl = import.meta.env.VITE_API_URL.replace('/api', '');
+                            imageUrl = `${baseApiUrl}${imageUrl}`;
+                        }
+
+                        let videoUrl = post.video;
+                        if (videoUrl && !videoUrl.startsWith('http') && !videoUrl.startsWith('blob:')) {
+                            const baseApiUrl = import.meta.env.VITE_API_URL.replace('/api', '');
+                            videoUrl = `${baseApiUrl}${videoUrl}`;
+                        }
+
+                        return (
+                            <div key={post.id} style={{ border: '1px solid #444', borderRadius: '8px', padding: '15px', backgroundColor: '#2a2a2a' }}>
+                                {imageUrl && (
+                                    <img
+                                        src={imageUrl}
+                                        alt={`Post by ${post.user}`}
+                                        style={{ width: '100%', height: 'auto', objectFit: 'cover', borderRadius: '4px', marginBottom: '10px' }}
+                                    />
+                                )}
+                                {videoUrl && (
+                                    <video
+                                        src={videoUrl}
+                                        controls
+                                        autoPlay
+                                        muted
+                                        style={{ width: '100%', height: 'auto', borderRadius: '4px', marginBottom: '10px', backgroundColor: '#000' }}
+                                    >
+                                        Your browser does not support the video tag.
+                                    </video>
+                                )}
+                                <h4 style={{ color: '#bb86fc', margin: '0 0 5px 0', fontSize: '1.1em' }}>
+                                    <Link to={`/profile/${post.user_id}`} style={{ color: '#bb86fc', textDecoration: 'none' }}>
                                     @{post.user}
                                 </Link>
                             </h4>
@@ -373,7 +390,10 @@ const ProfilePage = () => {
                                 Posted on: {new Date(post.created_at).toLocaleDateString()}
                             </p>
                         </div>
-                    ))}
+                    ); // Terminates the return statement
+                    } // Closes the arrow function body: post => { ... }
+                    ) // Closes the map() call
+                    } {/* Closes the JSX expression: {posts.map(...)} */}
                 </div>
             </section>
         </div>
