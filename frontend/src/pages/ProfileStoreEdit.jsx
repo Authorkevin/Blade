@@ -1,16 +1,26 @@
 import React, { useState } from 'react';
-import api from '../api'; // Assuming api.js is in src/ and exports the axios instance
+import api from '../api';
 import { useNavigate } from 'react-router-dom';
 
 function ProfileStoreEdit() {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
-    const [productType, setProductType] = useState('physical'); // Default to 'physical'
+    const [productType, setProductType] = useState('physical');
+    const [image, setImage] = useState(null); // Added for image file
+    const [video, setVideo] = useState(null); // Added for video file
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState('');
     const navigate = useNavigate();
+
+    const handleImageChange = (e) => {
+        setImage(e.target.files[0]);
+    };
+
+    const handleVideoChange = (e) => {
+        setVideo(e.target.files[0]);
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -18,27 +28,49 @@ function ProfileStoreEdit() {
         setError(null);
         setSuccessMessage('');
 
-        const productData = {
-            name,
-            description,
-            price: parseFloat(price), // Ensure price is a number
-            product_type: productType,
-        };
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('description', description);
+        formData.append('price', parseFloat(price));
+        formData.append('product_type', productType);
+        if (image) {
+            formData.append('image', image);
+        }
+        if (video) {
+            formData.append('video', video);
+        }
 
         try {
-            const response = await api.post('/products/', productData);
+            // The Content-Type header will be automatically set to multipart/form-data by Axios
+            const response = await api.post('/products/', formData);
             setSuccessMessage(`Product "${response.data.name}" created successfully!`);
             // Clear form
             setName('');
             setDescription('');
             setPrice('');
             setProductType('physical');
+            setImage(null);
+            setVideo(null);
+            // Clear file input fields visually (if needed, by resetting the form or input value)
+            if (document.getElementById('image')) document.getElementById('image').value = null;
+            if (document.getElementById('video')) document.getElementById('video').value = null;
+
             console.log('Product created:', response.data);
-            // Optional: Navigate to store page after a delay
-            // setTimeout(() => navigate('/profile/store'), 2000); 
+            // Optional: Navigate or give feedback
         } catch (err) {
-            setError(err.response?.data?.detail || err.message || 'Failed to create product.');
-            console.error("Error creating product:", err);
+            let errorMessage = 'Failed to create product.';
+            if (err.response && err.response.data) {
+                // Attempt to parse and display backend validation errors
+                const errors = err.response.data;
+                const messages = Object.keys(errors)
+                    .map(key => `${key}: ${errors[key].join ? errors[key].join(', ') : errors[key]}`)
+                    .join('; ');
+                if (messages) errorMessage = messages;
+            } else if (err.message) {
+                errorMessage = err.message;
+            }
+            setError(errorMessage);
+            console.error("Error creating product:", err.response || err);
         } finally {
             setIsLoading(false);
         }
@@ -90,6 +122,24 @@ function ProfileStoreEdit() {
                         <option value="physical">Physical</option>
                         <option value="digital">Digital</option>
                     </select>
+                </div>
+                <div>
+                    <label htmlFor="image">Product Image:</label>
+                    <input
+                        type="file"
+                        id="image"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                    />
+                </div>
+                <div>
+                    <label htmlFor="video">Product Video:</label>
+                    <input
+                        type="file"
+                        id="video"
+                        accept="video/*"
+                        onChange={handleVideoChange}
+                    />
                 </div>
                 <button type="submit" disabled={isLoading}>
                     {isLoading ? 'Creating...' : 'Create Product'}

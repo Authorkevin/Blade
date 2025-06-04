@@ -79,6 +79,7 @@ const ProfilePage = () => {
         borderRadius: '5px',
         fontWeight: 'bold',
         transition: 'background-color 0.2s ease',
+        marginRight: '10px',
     };
 
 
@@ -93,12 +94,22 @@ const ProfilePage = () => {
                 {/* Add more profile information here as needed */}
             </section>
 
-            <Link to="/settings" style={linkStyle}
+            <Link 
+                  to="/settings" 
+                  style={linkStyle}
                   onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#018786'}
                   onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#03dac5'}
             >
                 Profile Settings & Preferences
             </Link>
+            <Link
+                  to='/profile/${userData.id}/store'
+                  style={linkStyle}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#018786'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#03dac5'}
+             >
+                 View My Store
+             </Link>
         </div>
     );
 };

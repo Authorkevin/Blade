@@ -98,7 +98,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-
+"""
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -117,7 +117,7 @@ DATABASES = {
         'PORT': '5432',
     }
 }
-"""
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -169,3 +169,6 @@ STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', 'sk_test_YOUR_SECRET_KEY')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', 'whsec_YOUR_WEBHOOK_SECRET') # For verifying webhook signatures
 DEFAULT_CURRENCY_STRIPE_PAID_CALLS = os.getenv('DEFAULT_CURRENCY_STRIPE_PAID_CALLS', 'usd')
 PLATFORM_FEE_PERCENTAGE_STRIPE_PAID_CALLS = os.getenv('PLATFORM_FEE_PERCENTAGE_STRIPE_PAID_CALLS', '0.20') # e.g. 20%
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

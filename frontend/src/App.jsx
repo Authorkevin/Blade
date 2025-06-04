@@ -16,7 +16,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ProtectedRoute><MainLayout><Home /></MainLayout></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><MainLayout><ProfilePage /></MainLayout></ProtectedRoute>} />
-        <Route path="/market" element={<ErrorBoundary><MainLayout><ProfileStore /></MainLayout></ErrorBoundary>} />
+        <Route path="/profile/:userId/store" element={<ErrorBoundary><MainLayout><ProfileStore /></MainLayout></ErrorBoundary>} />
         <Route path="/your-store" element={<ProtectedRoute><MainLayout><ProfileStoreEdit /></MainLayout></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
