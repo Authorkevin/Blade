@@ -5,9 +5,11 @@ from .serializers import (
     UserSerializer, ProductSerializer, PostSerializer, UserProfileSerializer,
     FollowSerializer, FollowerSerializer, FollowingSerializer # Added Follow serializers
 )
-from .models import Product, Post, UserProfile, Follow # Added Follow model
+from .models import Product, Post, UserProfile, Follow, PostLike # Added Follow model, PostLike
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
+from rest_framework.views import APIView # Added APIView for PostLikeToggleView
+# status is already available via from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 import logging # Import logging
 
@@ -150,3 +152,27 @@ class UserFollowingListView(generics.ListAPIView):
         user_id = self.kwargs['user_id']
         target_user = get_object_or_404(User, id=user_id)
         return Follow.objects.filter(user=target_user).select_related('followed_user__api_profile')
+
+
+class PostLikeToggleView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_id):
+        post_instance = get_object_or_404(Post, id=post_id) # Renamed post to post_instance to avoid conflict
+        user = request.user
+
+        if PostLike.objects.filter(user=user, post=post_instance).exists():
+            return Response({"detail": "You have already liked this post."}, status=status.HTTP_400_BAD_REQUEST)
+
+        PostLike.objects.create(user=user, post=post_instance) # Use post_instance
+        return Response({"detail": f"Post {post_id} liked."}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, post_id):
+        post_instance = get_object_or_404(Post, id=post_id) # Renamed post to post_instance
+        user = request.user
+        try:
+            like = PostLike.objects.get(user=user, post=post_instance) # Use post_instance
+            like.delete()
+            return Response({"detail": f"Post {post_id} unliked."}, status=status.HTTP_200_OK)
+        except PostLike.DoesNotExist:
+            return Response({"detail": "You have not liked this post."}, status=status.HTTP_400_BAD_REQUEST)

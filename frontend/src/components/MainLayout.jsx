@@ -1,5 +1,8 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import axios from 'axios'; // For the logout API call
+import { ACCESS_TOKEN, REFRESH_TOKEN } from '../constants'; // Assuming these are defined
+
 
 // Using placeholder icons (simple text/emojis for now)
 // In a real app, you'd use an icon library like react-icons or SVGs
@@ -7,14 +10,50 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 const MainLayout = ({ children }) => {
     const location = useLocation();
     const navigate = useNavigate(); // For logout
+    const isAuthenticated = !!localStorage.getItem(ACCESS_TOKEN);
 
-    const navItems = [
+    const baseNavItems = [ // Renamed to baseNavItems
         { path: '/', label: '🏠', name: 'Home' },
         { path: '/messages', label: '💬', name: 'Messages' },
         // Example: Add a placeholder for a page that lists calls or initiates new video calls
         // { path: '/calls-overview', label: '📞', name: 'Calls' },
         { path: '/profile', label: '👤', name: 'Profile' },
     ];
+
+    const handleLogout = async () => {
+        // const refreshToken = localStorage.getItem(REFRESH_TOKEN); // refreshToken not directly used for /auth/token/logout/
+        // The /auth/token/logout/ endpoint (TokenDestroyView) uses the access token from Authorization header.
+        // api.js interceptor should handle adding the access token.
+        // If not using api.js for this call, ensure headers are set if needed, but typically interceptors handle this.
+        if (localStorage.getItem(ACCESS_TOKEN)) { // Check if user is authenticated before trying backend logout
+            try {
+                // Using global axios here. If you have an axios instance in api.js, prefer that.
+                // e.g., import api from '../api'; await api.post('/auth/token/logout/');
+                await axios.post('http://localhost:8000/auth/token/logout/', {}, {
+                    headers: {
+                        // Axios interceptor in api.js should add this, but being explicit if global axios is used
+                        'Authorization': `Bearer ${localStorage.getItem(ACCESS_TOKEN)}`
+                    }
+                });
+                console.log('Successfully logged out on the backend.');
+            } catch (err) {
+                console.error('Backend logout failed. Proceeding with client-side cleanup.', err.response ? err.response.data : err.message);
+            }
+        }
+
+        localStorage.removeItem(ACCESS_TOKEN);
+        localStorage.removeItem(REFRESH_TOKEN);
+        localStorage.removeItem('user');
+
+        navigate('/login');
+    };
+
+    // Add Logout to navItems if authenticated
+    let currentNavItems = [...baseNavItems]; // Use baseNavItems
+    if (isAuthenticated) {
+        currentNavItems.push({ path: '#logout', label: '🚪', name: 'Logout', action: handleLogout });
+    }
+
 
     // Basic Dark Theme Styles
     const layoutStyle = {
@@ -91,16 +130,23 @@ const MainLayout = ({ children }) => {
                 {children}
             </main>
             <nav style={bottomNavStyle}>
-                {navItems.map(item => (
-                    <Link
-                        key={item.name}
-                        to={item.path}
-                        style={navLinkStyle(location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path)) )}
-                        title={item.name} // Accessibility
-                    >
-                        <span style={navIconStyle}>{item.label}</span>
-                        {item.name}
-                    </Link>
+                {currentNavItems.map(item => (
+                    item.action ? (
+                        <button key={item.name} onClick={item.action} style={{...navLinkStyle(false), background: 'none', border: 'none', cursor: 'pointer', padding: '5px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: '12px' }} title={item.name}>
+                            <span style={navIconStyle}>{item.label}</span>
+                            {item.name}
+                        </button>
+                    ) : (
+                        <Link
+                            key={item.name}
+                            to={item.path}
+                            style={navLinkStyle(location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path)) )}
+                            title={item.name} // Accessibility
+                        >
+                            <span style={navIconStyle}>{item.label}</span>
+                            {item.name}
+                        </Link>
+                    )
                 ))}
             </nav>
         </div>

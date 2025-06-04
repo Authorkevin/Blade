@@ -78,3 +78,18 @@ class Follow(models.Model):
 
     def __str__(self):
         return f"{self.user.username} follows {self.followed_user.username}"
+
+
+class PostLike(models.Model):
+    user = models.ForeignKey(User, related_name='post_likes', on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, related_name='likes', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'post'], name='unique_post_like')
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} likes Post {self.post.id}"

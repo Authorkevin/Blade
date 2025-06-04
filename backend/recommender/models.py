@@ -9,11 +9,15 @@ This includes:
 from django.db import models
 from django.conf import settings # To get USER_MODEL
 from django.utils import timezone
+# from ..api.models import Post # Avoid direct import if Post might import from recommender
+# Use string reference 'api.Post' for ForeignKey/OneToOneField
 
 class Video(models.Model):
     """
     Represents a video in the platform.
+    Can be sourced from an api.models.Post or be an independent video.
     """
+    # Fields for all videos
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     uploader = models.ForeignKey(
@@ -32,8 +36,31 @@ class Video(models.Model):
     )
     duration_seconds = models.PositiveIntegerField(null=True, blank=True)
 
+    # Link to api.Post if this video originates from a Post
+    # Using string 'api.Post' to avoid circular import issues.
+    source_post = models.OneToOneField(
+        'api.Post',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='recommender_video_entry',
+        help_text="Link to the Post object if this video was uploaded as part of a post."
+    )
+
+    # Optional field for videos not linked to a Post, if the recommender ingests videos directly.
+    video_file = models.FileField(
+        upload_to='recommender_internal_videos/',
+        null=True,
+        blank=True,
+        help_text="Video file, primarily for videos not sourced from a Post. If source_post is set, this may be redundant."
+    )
+
     def __str__(self):
-        return f"{self.title} (by {self.uploader.username if self.uploader else 'Unknown User'})"
+        if self.source_post:
+            return f"{self.title} (from Post by {self.source_post.user.username})"
+        elif self.uploader:
+            return f"{self.title} (by {self.uploader.username})"
+        return f"{self.title} (Uploader not specified)"
 
     class Meta:
         ordering = ['-upload_timestamp']

@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Product, Post, UserProfile, Follow # Import Follow
+from .models import Product, Post, UserProfile, Follow, PostLike # Import Follow, PostLike
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -70,10 +70,29 @@ class ProductSerializer(serializers.ModelSerializer):
 class PostSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
     user_id = serializers.ReadOnlyField(source='user.id') # Added user_id
+    likes_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Post
-        fields = ['id', 'user', 'user_id', 'caption', 'image', 'video', 'keywords', 'created_at', 'updated_at'] # Added user_id to fields
+        fields = ['id', 'user', 'user_id', 'caption', 'image', 'video', 'keywords', 'created_at', 'updated_at', 'likes_count'] # Added user_id and likes_count to fields
         read_only_fields = ['user', 'user_id'] # Added user_id to read_only_fields
+
+    def get_likes_count(self, obj):
+        return obj.likes.count()
+
+
+class PostLikeSerializer(serializers.ModelSerializer):
+    user = serializers.ReadOnlyField(source='user.username') # Show username, not ID
+
+    class Meta:
+        model = PostLike
+        fields = ['id', 'user', 'post', 'created_at']
+        read_only_fields = ['user', 'created_at'] # post is set via URL
+
+    def create(self, validated_data):
+        # User is set in the view, post is passed in validated_data (from context or URL)
+        # Ensure this doesn't clash with UniqueConstraint if called directly without view logic
+        return super().create(validated_data)
 
 
 class FollowSerializer(serializers.ModelSerializer):

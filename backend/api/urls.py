@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views import PostLikeToggleView # Add this
 
 urlpatterns = [
     path('user/register/', views.CreateUserView.as_view(), name='user-register'), # Assuming a route for existing user view
@@ -14,4 +15,6 @@ urlpatterns = [
     path('users/<int:user_id>/follow/', views.FollowToggleView.as_view(), name='follow-toggle'),
     path('users/<int:user_id>/followers/', views.UserFollowersListView.as_view(), name='user-followers'),
     path('users/<int:user_id>/following/', views.UserFollowingListView.as_view(), name='user-following'),
+    # Post Like URL
+    path('posts/<int:post_id>/like/', PostLikeToggleView.as_view(), name='post-like-toggle'),
 ]
