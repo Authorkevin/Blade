@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const LoginPage = () => {
@@ -9,6 +10,7 @@ const LoginPage = () => {
     });
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const navigate = useNavigate();
 
     const { email, username, password } = formData;
 
@@ -29,9 +31,11 @@ const LoginPage = () => {
             localStorage.setItem('access', res.data.access);
             localStorage.setItem('refresh', res.data.refresh);
             // You might want to redirect the user or update UI state here
+            
             setSuccess('Login successful! Token stored.');
             console.log('Access Token:', res.data.access);
             console.log('Refresh Token:', res.data.refresh);
+            navigate('/');
         } catch (err) {
             console.error(err.response ? err.response.data : err.message);
             setError(err.response && err.response.data && typeof err.response.data === 'object' ? JSON.stringify(err.response.data) : 'Login failed. Please check your credentials.');

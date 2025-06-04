@@ -30,7 +30,7 @@ class Video(models.Model):
         blank=True,
         help_text="Comma-separated tags for discoverability and content categorization."
     )
-    # Example: duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.title} (by {self.uploader.username if self.uploader else 'Unknown User'})"

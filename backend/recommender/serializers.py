@@ -8,15 +8,15 @@ class VideoSerializer(serializers.ModelSerializer):
     uploader_username = serializers.ReadOnlyField(source='uploader.username')
     # You could add more fields here, e.g., derived ones or related counts
     # interactions_count = serializers.SerializerMethodField()
-    # def get_interactions_count(self, obj):
-    #    return obj.interactions.count()
+    def get_interactions_count(self, obj):
+       return obj.interactions.count()
 
     class Meta:
         model = Video
         fields = [
             'id', 'title', 'description', 'uploader', 'uploader_username',
-            'upload_timestamp', 'tags'
-            # 'duration_seconds', # if you added this to model
+            'upload_timestamp', 'tags',
+            'duration_seconds', # if you added this to model
         ]
         # uploader is set automatically if a view creates a video by an authenticated user
         read_only_fields = ['uploader']
@@ -57,11 +57,11 @@ class UserVideoInteractionSerializer(serializers.ModelSerializer):
         # For now, assuming standard create/update based on unique_together.
 
         # If you want POST to update_or_create:
-        # instance, created = UserVideoInteraction.objects.update_or_create(
-        #     user=validated_data.get('user'),
-        #     video=validated_data.get('video'),
-        #     defaults=validated_data
-        #) 
-        # return instance
+        instance, created = UserVideoInteraction.objects.update_or_create(
+            user=validated_data.get('user'),
+            video=validated_data.get('video'),
+            defaults=validated_data
+        ) 
+        return instance
 
         return super().create(validated_data)
