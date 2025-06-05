@@ -1,5 +1,7 @@
 import React from 'react';
 import recommenderService from '../services/recommenderService'; // For interaction buttons
+import { Link, useParams } from 'react-router-dom'; // Import useParams
+
 
 const VideoCard = ({ video }) => {
     if (!video) return null;
@@ -57,13 +59,13 @@ const VideoCard = ({ video }) => {
     };
     const buttonContainerStyle = {
         marginTop: 'auto', // Push buttons to the bottom if card content is sparse
-        paddingTop: '15px', // Add some space above buttons if video isn't there or content is short
+        paddingTop: '5px', // Add some space above buttons if video isn't there or content is short
         display: 'flex',
         gap: '10px',
     };
     const buttonStyle = (variant = 'primary') => ({
-        padding: '8px 15px',
-        backgroundColor: variant === 'primary' ? '#03dac5' : '#373737',
+        padding: '5px 10px',
+        backgroundColor: variant === 'primary' ? '#bb86fc' : 'transparent',
         color: variant === 'primary' ? '#121212' : '#e0e0e0',
         border: 'none',
         borderRadius: '5px',
@@ -96,13 +98,15 @@ const VideoCard = ({ video }) => {
     return (
         <div style={cardStyle}>
             <div> {/* Content section */}
-                <h3 style={titleStyle}>{video.title || "Untitled Video"}</h3>
+                {/* <h3 style={titleStyle}>{video.title || "Untitled Video"}</h3> */}
 
                 {/* Video Player Section */}
                 {video.video_url ? (
                     <div style={videoPlayerContainerStyle}>
                         <video
                             controls
+                            autoPlay
+                            muted
                             src={video.video_url}
                             style={videoPlayerStyle}
                             onError={(e) => {
@@ -124,14 +128,14 @@ const VideoCard = ({ video }) => {
                 )}
 
                 <p style={descriptionStyle}>{video.description || "No description available."}</p>
-                <p style={uploaderStyle}>Uploaded by: {video.uploader_username || 'Unknown'}</p>
-                {video.tags && <p style={tagsStyle}>Tags: <em>{video.tags.split(',').map(tag => tag.trim()).join(', ')}</em></p>}
+                <p style={uploaderStyle}><Link to={`/profile/${video.uploader_id}`} style={{ color: '#bb86fc', textDecoration: 'none' }}>@{video.uploader_username || 'Unknown'}</Link></p>
+                {/* {video.tags && <p style={tagsStyle}>Tags: <em>{video.tags.split(',').map(tag => tag.trim()).join(', ')}</em></p>}   */}
             </div>
 
             {/* Button Section */}
             <div style={buttonContainerStyle}>
-                <button onClick={handleLike} style={buttonStyle('primary')} title="Like this video">Like 👍</button>
-                <button onClick={handleMarkWatched} style={buttonStyle('secondary')} title="Mark as watched">Mark Watched ✅</button>
+                <button onClick={handleLike} style={buttonStyle('secindary')} title="Like this video">👍</button>
+                <button onClick={handleMarkWatched} style={buttonStyle('secondary')} title="Mark as watched">✅</button>
             </div>
         </div>
     );

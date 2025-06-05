@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 const PostCard = ({ post }) => {
     if (!post) return null;
@@ -74,8 +75,6 @@ const PostCard = ({ post }) => {
     return (
         <div style={cardStyle}>
             <div> {/* Top content section */}
-                <h4 style={authorStyle}>Post by: {post.user || 'Unknown User'}</h4>
-                <p style={captionStyle}>{post.caption || "No caption."}</p>
 
                 {post.image && (
                     <img src={post.image} alt={`Post image for ${post.id}`} style={imageStyle} />
@@ -85,6 +84,8 @@ const PostCard = ({ post }) => {
                     <div style={videoContainerStyle}>
                         <video
                             controls
+                            autoPlay
+                            muted
                             src={post.video}
                             style={videoPlayerStyle}
                             onError={(e) => {
@@ -101,7 +102,10 @@ const PostCard = ({ post }) => {
                     </div>
                 )}
 
-                {post.keywords && <p style={keywordsStyle}>Keywords: {post.keywords}</p>}
+                <p style={authorStyle}><Link to={`/profile/${post.user_id} `} style={{ color: '#bb86fc' }}>@{post.user || 'Unknown User'}</Link></p>
+                <p style={captionStyle}>{post.caption || "No caption."}</p>
+
+         {/*       {post.keywords && <p style={keywordsStyle}>Keywords: {post.keywords}</p>} */}
             </div>
 
             {/* Bottom content section for buttons */}
