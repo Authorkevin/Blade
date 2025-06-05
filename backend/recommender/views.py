@@ -6,36 +6,27 @@ Provides endpoints for:
 - Creating, updating, and retrieving user interactions with videos.
 """
 from rest_framework.views import APIView
-from rest_framework import generics, viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied # Added for perform_update
+from rest_framework import generics, viewsets, status # status is needed
+from rest_framework.response import Response # Response is needed
+from rest_framework.permissions import IsAuthenticated, AllowAny # For original RecommendationView
+from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model
-from .utils import get_recommendations_for_user
+from .utils import get_recommendations_for_user # This is now the original complex utils
 # prime_recommender_cache_on_startup is called in apps.py
 from .models import Video, UserVideoInteraction
-from .serializers import VideoSerializer, UserVideoInteractionSerializer
+from .serializers import VideoSerializer, UserVideoInteractionSerializer # VideoSerializer is needed
+from api.serializers import PostSerializer # PostSerializer is needed
 import logging
+# No io or traceback needed for original view
 
-logger = logging.getLogger(__name__)
 User = get_user_model()
+logger = logging.getLogger(__name__)
+
 
 class RecommendationView(APIView):
-    """
-    Provides personalized video recommendations to authenticated users.
-
-    GET /api/recommender/recommendations/?count=<N>:
-    Returns a list of N recommended video objects.
-    Requires authentication.
-    """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
-        """
-        Handles GET requests to fetch video recommendations.
-        The user is taken from the authenticated request.
-        `count` query parameter specifies the number of recommendations (default 10, max 50).
-        """
         user = request.user
         try:
             num_recommendations = int(request.query_params.get('count', 10))
@@ -45,23 +36,33 @@ class RecommendationView(APIView):
             num_recommendations = 10
 
         logger.info(f"Fetching {num_recommendations} recommendations for user {user.id} ({user.username}).")
+
         try:
-            recommended_video_ids = get_recommendations_for_user(user.id, num_recommendations)
+            # This function now returns a list of dicts: {'type': 'post'/'video', 'id': ..., 'object': ...}
+            # from the original complex get_recommendations_for_user
+            recommended_items = get_recommendations_for_user(user.id, num_recommendations)
         except Exception as e:
             logger.error(f"Error generating recommendations for user {user.id}: {e}", exc_info=True)
             return Response({"error": "Could not generate recommendations at this time."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        if not recommended_video_ids:
+        if not recommended_items:
             logger.info(f"No recommendations found for user {user.id}.")
-            return Response({"message": "No recommendations available for you right now. Explore more videos!", "videos": []})
+            return Response({"message": "No recommendations available for you right now. Explore more content!", "items": []}, status=status.HTTP_200_OK)
 
-        videos_dict = {v.id: v for v in Video.objects.filter(id__in=recommended_video_ids)}
-        ordered_videos = [videos_dict[vid] for vid in recommended_video_ids if vid in videos_dict]
+        serialized_items = []
+        for item in recommended_items:
+            if item['type'] == 'video':
+                serializer = VideoSerializer(item['object'], context={'request': request})
+                serialized_items.append(serializer.data)
+            elif item['type'] == 'post':
+                serializer = PostSerializer(item['object'], context={'request': request})
+                serialized_items.append(serializer.data)
+            else:
+                logger.warning(f"Unknown item type encountered in recommendations: {item.get('type')} for user {user.id}")
 
-        serializer = VideoSerializer(ordered_videos, many=True, context={'request': request})
-        return Response({"videos": serializer.data})
+        return Response({"items": serialized_items}, status=status.HTTP_200_OK)
 
-
+# UserVideoInteractionViewSet remains unchanged
 class UserVideoInteractionViewSet(viewsets.ModelViewSet):
     """
     API endpoint for users to record and manage their interactions with videos.

@@ -200,180 +200,187 @@ def build_interaction_data_and_matrices(force_rebuild=False):
 
 
 def get_recommendations_for_user(user_id, num_recommendations=10):
-    """
-    Generates personalized video recommendations for a specific user.
+    logger.info(f"Generating recommendations for user {user_id}, num_recommendations={num_recommendations}")
+    recommended_items = []
+    added_post_ids = set()
+    current_user = None
+    try:
+        current_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        logger.error(f"User with id {user_id} not found. Cannot personalize superuser post filtering.")
+        # Proceed without current_user, meaning superuser posts won't be filtered if they are by user_id
 
-    This function implements a simplified item-based collaborative filtering approach:
-    1. Retrieves the user's interaction vector from the user-item matrix.
-    2. Identifies items (videos) the user has positively interacted with.
-    3. For each such item, finds similar items using the pre-calculated item-item
-       similarity matrix.
-    4. Aggregates scores for these similar items, weighted by the user's original
-       interaction score for the source item.
-    5. Excludes items the user has already interacted with.
-    6. Returns the top N recommended video IDs.
+    # 1. Add superuser posts
+    # Superuser posts that the user hasn't seen (simplified: not by the user themselves)
+    # Fetched ordered by most recent.
+    # Ensure User model is available via `User = get_user_model()` at module level.
+    superuser_posts_qs = Post.objects.filter(user__is_superuser=True).select_related('user').order_by('-created_at')
 
-    If the user is new, has no interactions, or if data is insufficient,
-    it falls back to recommending recently uploaded videos.
-
-    Args:
-        user_id (int): The ID of the user for whom to generate recommendations.
-        num_recommendations (int): The maximum number of recommendations to return.
-
-    Returns:
-        list[int]: A list of recommended video IDs.
-    """
-    if RECOMMENDER_DATA_CACHE["user_item_matrix_df"] is None or \
-       RECOMMENDER_DATA_CACHE["item_similarity_matrix"] is None:
-        logger.info("Recommender cache not populated. Attempting to build now for get_recommendations.")
-        build_interaction_data_and_matrices(force_rebuild=True)
-
-    user_item_df = RECOMMENDER_DATA_CACHE["user_item_matrix_df"]
-    item_similarity_matrix = RECOMMENDER_DATA_CACHE.get("item_similarity_matrix")
-    video_id_to_idx = RECOMMENDER_DATA_CACHE.get("video_id_to_idx", {}) # from CF
-    video_idx_to_id = RECOMMENDER_DATA_CACHE.get("video_idx_to_id", {}) # from CF
-    user_id_to_idx = RECOMMENDER_DATA_CACHE.get("user_id_to_idx", {})
-
-    video_features_map = RECOMMENDER_DATA_CACHE.get("video_features_map", {})
-    all_post_keywords = set(RECOMMENDER_DATA_CACHE.get("all_post_keywords", []))
-    user_follows_map = RECOMMENDER_DATA_CACHE.get("user_follows_map", {})
-
-    KEYWORD_BOOST_FACTOR = 0.1
-    FOLLOWED_CREATOR_BOOST_FACTOR = 0.5 # Significant boost for content from followed creators
-
-    # Fallback function
-    def get_fallback_recommendations(num_recs):
-        logger.info(f"Using fallback (recent videos, boosted by keywords & followed creators) for user {user_id}.")
-
-        followed_creator_ids = set(user_follows_map.get(user_id, []))
-        recent_videos = Video.objects.all().select_related('uploader').order_by('-upload_timestamp')
-
-        scored_recent_videos = []
-        for video in recent_videos:
-            score = 0.0 # Base score for recency
-
-            # Keyword match boost
-            video_kw = set(video_features_map.get(video.id, []))
-            keyword_matches = len(video_kw.intersection(all_post_keywords))
-            if keyword_matches > 0:
-                score += KEYWORD_BOOST_FACTOR * keyword_matches
-
-            # Followed creator boost
-            if video.uploader_id in followed_creator_ids:
-                score += FOLLOWED_CREATOR_BOOST_FACTOR * (1 + score) # Apply boost on top of existing score
-
-            scored_recent_videos.append({'video_id': video.id, 'score': score})
-
-        scored_recent_videos.sort(key=lambda x: x['score'], reverse=True)
-        return [v['video_id'] for v in scored_recent_videos[:num_recs]]
-
-    if user_item_df is None or user_item_df.empty or item_similarity_matrix is None or \
-       not video_id_to_idx or not video_idx_to_id or not user_id_to_idx:
-        logger.warning("CF Recommender data insufficient. Using fallback.")
-        return get_fallback_recommendations(num_recommendations)
-
-    if user_id not in user_id_to_idx:
-        logger.info(f"User {user_id} not in CF matrix. Using fallback.")
-        return get_fallback_recommendations(num_recommendations)
-
-    user_matrix_idx = user_id_to_idx[user_id]
-    # Ensure user_matrix_idx is valid for the DataFrame
-    if user_matrix_idx >= user_item_df.shape[0]:
-        logger.error(f"User matrix index {user_matrix_idx} out of bounds for user_item_df. User ID: {user_id}. Fallback.")
-        return get_fallback_recommendations(num_recommendations)
-
-    user_interactions_vector = user_item_df.iloc[user_matrix_idx].values
-    interacted_video_indices_in_matrix = np.where(user_interactions_vector > 0.1)[0] # Indices within CF matrix columns
-
-    if not interacted_video_indices_in_matrix.any():
-        logger.info(f"User {user_id} has no significant positive interactions in CF matrix. Using fallback.")
-        return get_fallback_recommendations(num_recommendations)
-
-    # Initialize aggregated_scores with zeros, size of columns in item_similarity_matrix
-    # which should match number of videos in video_id_to_idx (CF videos)
-    num_cf_videos = item_similarity_matrix.shape[1]
-    aggregated_scores = np.zeros(num_cf_videos)
-
-    for video_idx_in_matrix in interacted_video_indices_in_matrix:
-        if video_idx_in_matrix >= num_cf_videos: # Safety check
-            logger.warning(f"Skipping video_idx_in_matrix {video_idx_in_matrix} as it's out of bounds for similarity_matrix columns ({num_cf_videos}).")
-            continue
-        user_score_for_this_video = user_interactions_vector[video_idx_in_matrix]
-        similarity_vector_for_this_video = item_similarity_matrix[video_idx_in_matrix, :].toarray().ravel()
-        aggregated_scores += similarity_vector_for_this_video * user_score_for_this_video
-
-    # Apply keyword and followed creator boosts
-    followed_creator_ids_for_user = set(user_follows_map.get(user_id, []))
-
-    # Need to fetch video objects or at least their uploader_id for videos in CF matrix
-    # This is inefficient if not all videos are in video_features_map with uploader_id
-    # For now, assume video_idx_to_id maps to IDs for which we can get uploader.
-    # A better way would be to have video_id -> uploader_id map in cache.
-
-    # Create a temporary map from video_id to uploader_id for videos in CF matrix
-    # This is not ideal for performance, should be cached in build_interaction_data_and_matrices
-    cf_video_ids = [video_idx_to_id.get(i) for i in range(num_cf_videos) if video_idx_to_id.get(i) is not None]
-    videos_in_cf = Video.objects.filter(id__in=cf_video_ids).values('id', 'uploader_id')
-    video_uploader_map = {v['id']: v['uploader_id'] for v in videos_in_cf}
-
-
-    for i in range(num_cf_videos):
-        video_id_cf = video_idx_to_id.get(i)
-        if not video_id_cf:
-            continue
-
-        current_score = aggregated_scores[i]
-        boost = 0.0
-
-        # Keyword boost
-        if video_id_cf in video_features_map:
-            video_kw = set(video_features_map.get(video_id_cf, []))
-            matches = len(video_kw.intersection(all_post_keywords))
-            if matches > 0:
-                boost += KEYWORD_BOOST_FACTOR * matches
-
-        # Followed creator boost
-        uploader_id = video_uploader_map.get(video_id_cf)
-        if uploader_id and uploader_id in followed_creator_ids_for_user:
-            boost += FOLLOWED_CREATOR_BOOST_FACTOR
-
-        if boost > 0:
-             # Apply boost: make it more significant if current score is also high
-            aggregated_scores[i] += boost * (1 + abs(current_score))
-
-
-    # Exclude already interacted videos
-    aggregated_scores[interacted_video_indices_in_matrix] = -np.inf
-
-    # Get top N recommendations
-    # Argsort returns indices; these are indices into the aggregated_scores array (i.e., video_idx_in_matrix for CF videos)
-    recommended_cf_indices = np.argsort(-aggregated_scores)
-
-    final_recommendation_video_ids = []
-    for cf_idx in recommended_cf_indices:
-        if aggregated_scores[cf_idx] == -np.inf: # Skip already interacted
-            continue
-        video_id = video_idx_to_id.get(cf_idx) # Map back to original video ID
-        if video_id:
-            final_recommendation_video_ids.append(video_id)
-        if len(final_recommendation_video_ids) >= num_recommendations:
+    for post in superuser_posts_qs:
+        if len(recommended_items) >= num_recommendations:
             break
+        # Only add if not by the current user (if current_user is known)
+        if current_user and post.user.id == current_user.id:
+            continue
+        recommended_items.append({'type': 'post', 'id': post.id, 'object': post})
+        added_post_ids.add(post.id)
 
-    # If CF recommendations are too few, fill with fallback
-    if len(final_recommendation_video_ids) < num_recommendations:
-        logger.info(f"CF recommendations ({len(final_recommendation_video_ids)}) less than requested ({num_recommendations}). Filling with fallback.")
-        num_needed = num_recommendations - len(final_recommendation_video_ids)
-        fallback_recs = get_fallback_recommendations(num_recommendations) # Get enough fallback
+    logger.info(f"Added {len(recommended_items)} superuser posts for user {user_id}.")
 
-        # Add fallback recs that are not already in final_recommendation_video_ids
-        for fb_vid in fallback_recs:
-            if len(final_recommendation_video_ids) >= num_recommendations:
+    # 2. Add other user posts (if space allows and if it's part of the requirement)
+    # The issue: "Are posts that users create being displayed on the home page feed?" - implies general posts too.
+    # "Ensure that all posts by superusers get recommended" - priority for superusers.
+    if len(recommended_items) < num_recommendations:
+        other_posts_qs = Post.objects.exclude(id__in=added_post_ids)                                      .select_related('user').order_by('-created_at')
+        if current_user: # Exclude user's own posts
+            other_posts_qs = other_posts_qs.exclude(user_id=current_user.id)
+
+        for post in other_posts_qs:
+            if len(recommended_items) >= num_recommendations:
                 break
-            if fb_vid not in final_recommendation_video_ids:
-                final_recommendation_video_ids.append(fb_vid)
+            if post.id not in added_post_ids: # Ensure no duplicates if a post wasn't by superuser but caught here
+                recommended_items.append({'type': 'post', 'id': post.id, 'object': post})
+                added_post_ids.add(post.id)
+        logger.info(f"Added {len(recommended_items) - len(added_post_ids)} other posts for user {user_id}. Total items after posts: {len(recommended_items)}")
 
-    logger.info(f"Generated {len(final_recommendation_video_ids)} recommendations for user {user_id}.")
-    return final_recommendation_video_ids
+
+    # 3. Add video recommendations (if space allows)
+    num_video_recs_needed = num_recommendations - len(recommended_items)
+    video_recommendations_packaged = [] # To store {'type': 'video', 'id': ..., 'object': ...}
+
+    if num_video_recs_needed > 0:
+        logger.info(f"Need {num_video_recs_needed} video recommendations for user {user_id}.")
+        # --- Start of adapted existing video recommendation logic ---
+        if RECOMMENDER_DATA_CACHE["user_item_matrix_df"] is None or            RECOMMENDER_DATA_CACHE["item_similarity_matrix"] is None:
+            logger.info("Recommender cache not populated for videos. Building now.")
+            build_interaction_data_and_matrices(force_rebuild=True) # Consider if force_rebuild is too much here
+
+        user_item_df = RECOMMENDER_DATA_CACHE["user_item_matrix_df"]
+        item_similarity_matrix = RECOMMENDER_DATA_CACHE.get("item_similarity_matrix")
+        video_id_to_idx = RECOMMENDER_DATA_CACHE.get("video_id_to_idx", {})
+        video_idx_to_id = RECOMMENDER_DATA_CACHE.get("video_idx_to_id", {})
+        user_id_to_idx = RECOMMENDER_DATA_CACHE.get("user_id_to_idx", {})
+
+        # Make sure these are not None when passed to fallback by scope.
+        # build_interaction_data_and_matrices already sets defaults if None, but this is an extra guard.
+        video_features_map_cache = RECOMMENDER_DATA_CACHE.get("video_features_map") if RECOMMENDER_DATA_CACHE.get("video_features_map") is not None else {}
+        all_post_keywords_cache_set = set(RECOMMENDER_DATA_CACHE.get("all_post_keywords")) if RECOMMENDER_DATA_CACHE.get("all_post_keywords") is not None else set()
+        user_follows_map_cache = RECOMMENDER_DATA_CACHE.get("user_follows_map") if RECOMMENDER_DATA_CACHE.get("user_follows_map") is not None else {}
+
+        KEYWORD_BOOST_FACTOR = 0.1
+        FOLLOWED_CREATOR_BOOST_FACTOR = 0.5
+
+        # Fallback function (returns list of Video objects)
+        def get_fallback_video_recommendations(num_recs, user_id_for_fallback): # Added user_id param
+            logger.info(f"Using fallback for videos for user {user_id_for_fallback}, num_recs={num_recs}.")
+
+            followed_creator_ids = set(user_follows_map_cache.get(user_id_for_fallback, [])) # Uses guarded cache variable
+            recent_videos_qs = Video.objects.all().select_related('uploader').order_by('-upload_timestamp')
+
+            if not recent_videos_qs.exists():
+                logger.warning(f"Fallback video recommendations: Video.objects.all() returned no videos for user {user_id_for_fallback}.")
+
+            scored_recent_videos = []
+            for video in recent_videos_qs:
+                score = 0.0
+                video_kw = set(video_features_map_cache.get(video.id, [])) # Use guarded cache variable
+                keyword_matches = len(video_kw.intersection(all_post_keywords_cache_set)) # Use guarded cache variable
+                if keyword_matches > 0: score += KEYWORD_BOOST_FACTOR * keyword_matches
+                if video.uploader_id in followed_creator_ids: score += FOLLOWED_CREATOR_BOOST_FACTOR * (1 + score)
+                scored_recent_videos.append({'video': video, 'score': score})
+
+            scored_recent_videos.sort(key=lambda x: x['score'], reverse=True)
+            return [v['video'] for v in scored_recent_videos[:num_recs]]
+
+        cf_recommended_video_objects = []
+
+        can_run_cf = not (user_item_df is None or user_item_df.empty or item_similarity_matrix is None or                        not video_id_to_idx or not video_idx_to_id or not user_id_to_idx)
+
+        user_in_cf_matrix = user_id in user_id_to_idx if can_run_cf else False
+
+        if can_run_cf and user_in_cf_matrix:
+            user_matrix_idx = user_id_to_idx[user_id]
+            if user_matrix_idx < user_item_df.shape[0]: # Check bounds
+                user_interactions_vector = user_item_df.iloc[user_matrix_idx].values
+                interacted_video_indices_in_matrix = np.where(user_interactions_vector > 0.1)[0]
+
+                if interacted_video_indices_in_matrix.any():
+                    num_cf_videos = item_similarity_matrix.shape[1]
+                    aggregated_scores = np.zeros(num_cf_videos)
+
+                    for video_idx_in_matrix in interacted_video_indices_in_matrix:
+                        if video_idx_in_matrix >= num_cf_videos: continue
+                        user_score_for_this_video = user_interactions_vector[video_idx_in_matrix]
+                        similarity_vector_for_this_video = item_similarity_matrix[video_idx_in_matrix, :].toarray().ravel()
+                        aggregated_scores += similarity_vector_for_this_video * user_score_for_this_video
+
+                    cf_video_ids_for_boost = [video_idx_to_id.get(i) for i in range(num_cf_videos) if video_idx_to_id.get(i) is not None]
+                    videos_in_cf_for_boost = Video.objects.filter(id__in=cf_video_ids_for_boost).values('id', 'uploader_id')
+                    video_uploader_map_for_boost = {v['id']: v['uploader_id'] for v in videos_in_cf_for_boost}
+                    followed_creator_ids_for_user = set(user_follows_map_cache.get(user_id, [])) # Uses guarded cache variable
+
+                    for i in range(num_cf_videos):
+                        video_id_cf = video_idx_to_id.get(i)
+                        if not video_id_cf: continue
+                        current_score = aggregated_scores[i]
+                        boost = 0.0
+                        # Use guarded cache variables here for consistency
+                        if video_id_cf in video_features_map_cache:
+                            video_kw = set(video_features_map_cache.get(video_id_cf, [])) # Uses guarded cache variable
+                            matches = len(video_kw.intersection(all_post_keywords_cache_set)) # Uses guarded cache variable
+                            if matches > 0: boost += KEYWORD_BOOST_FACTOR * matches
+
+                        uploader_id = video_uploader_map_for_boost.get(video_id_cf)
+                        if uploader_id and uploader_id in followed_creator_ids_for_user:
+                            boost += FOLLOWED_CREATOR_BOOST_FACTOR
+
+                        if boost > 0: aggregated_scores[i] += boost * (1 + abs(current_score))
+
+                    aggregated_scores[interacted_video_indices_in_matrix] = -np.inf # Exclude interacted
+                    recommended_cf_indices = np.argsort(-aggregated_scores)
+
+                    temp_cf_video_ids = []
+                    for cf_idx in recommended_cf_indices:
+                        if aggregated_scores[cf_idx] == -np.inf: continue
+                        video_id_res = video_idx_to_id.get(cf_idx) # Renamed
+                        if video_id_res: temp_cf_video_ids.append(video_id_res)
+                        if len(temp_cf_video_ids) >= num_video_recs_needed: break
+
+                    if temp_cf_video_ids:
+                        video_obj_map = {v.id: v for v in Video.objects.filter(id__in=temp_cf_video_ids)}
+                        cf_recommended_video_objects = [video_obj_map[vid] for vid in temp_cf_video_ids if vid in video_obj_map]
+                else: # No significant positive interactions
+                    logger.info(f"User {user_id} has no significant positive interactions in CF matrix. Using fallback for videos.")
+            else:
+                 logger.error(f"User matrix index {user_matrix_idx} out of bounds for user_item_df. User ID: {user_id}. Using fallback for videos.")
+        elif not can_run_cf:
+            logger.warning("CF Recommender data insufficient for videos. Using fallback.")
+        elif not user_in_cf_matrix:
+             logger.info(f"User {user_id} not in CF matrix for videos. Using fallback.")
+
+        # Package CF recommendations
+        for video_obj in cf_recommended_video_objects:
+            if len(video_recommendations_packaged) < num_video_recs_needed:
+                video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
+            else:
+                break
+
+        num_fallback_needed = num_video_recs_needed - len(video_recommendations_packaged)
+        if num_fallback_needed > 0:
+            logger.info(f"Need {num_fallback_needed} more videos from fallback for user {user_id}.")
+            fallback_video_objects = get_fallback_video_recommendations(num_fallback_needed, user_id)
+            for video_obj in fallback_video_objects: # This loop should be robust
+                if len(video_recommendations_packaged) < num_video_recs_needed: # Double check limit
+                    video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
+                else:
+                    break # Stop if limit reached
+        # --- End of adapted video recommendation logic ---
+
+        recommended_items.extend(video_recommendations_packaged)
+        logger.info(f"Added {len(video_recommendations_packaged)} video recommendations for user {user_id}.")
+
+    logger.info(f"Generated {len(recommended_items)} total mixed recommendations for user {user_id}. Breakdown: Posts={len(added_post_ids)}, Videos={len(video_recommendations_packaged)}.")
+    return recommended_items[:num_recommendations] # Ensure final list does not exceed num_recommendations
 
 def prime_recommender_cache_on_startup():
     """
