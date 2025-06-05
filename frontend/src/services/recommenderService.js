@@ -17,12 +17,12 @@ axiosInstance.interceptors.request.use(config => {
 export const getRecommendations = async (count = 10) => {
     try {
         const response = await axiosInstance.get(`/recommendations/?count=${count}`);
-        return response.data.videos || []; // Ensure it returns an array even if videos key is missing
+        // Ensure it returns an array even if items key is missing or response.data is unexpected
+        return response.data && Array.isArray(response.data.items) ? response.data.items : [];
     } catch (error) {
         console.error('Error fetching recommendations:', error.response ? error.response.data : error.message);
         // Return empty array on error to prevent frontend crashes if component expects array
         return [];
-        // Or rethrow: throw error.response ? error.response.data : new Error('Failed to fetch recommendations');
     }
 };
 

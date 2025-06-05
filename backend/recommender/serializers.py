@@ -6,21 +6,29 @@ User = get_user_model()
 
 class VideoSerializer(serializers.ModelSerializer):
     uploader_username = serializers.ReadOnlyField(source='uploader.username')
-    # You could add more fields here, e.g., derived ones or related counts
-    # interactions_count = serializers.SerializerMethodField()
-    def get_interactions_count(self, obj):
-       return obj.interactions.count()
+    video_url = serializers.SerializerMethodField() # New field
 
     class Meta:
         model = Video
         fields = [
             'id', 'title', 'description', 'uploader', 'uploader_username',
             'upload_timestamp', 'tags',
-            'duration_seconds', # if you added this to model
+            'duration_seconds',
+            'video_url', # Added to fields
         ]
-        # uploader is set automatically if a view creates a video by an authenticated user
         read_only_fields = ['uploader']
 
+    def get_video_url(self, obj):
+        request = self.context.get('request')
+        if obj.source_post and obj.source_post.video and hasattr(obj.source_post.video, 'url'):
+            if request:
+                return request.build_absolute_uri(obj.source_post.video.url)
+            return obj.source_post.video.url # Fallback if no request in context
+        elif obj.video_file and hasattr(obj.video_file, 'url'):
+            if request:
+                return request.build_absolute_uri(obj.video_file.url)
+            return obj.video_file.url # Fallback if no request in context
+        return None
 
 class UserVideoInteractionSerializer(serializers.ModelSerializer):
     user_username = serializers.ReadOnlyField(source='user.username')
@@ -56,12 +64,10 @@ class UserVideoInteractionSerializer(serializers.ModelSerializer):
         # If you want POST to also update, you'd customize .create() or use a different approach.
         # For now, assuming standard create/update based on unique_together.
 
-        # If you want POST to update_or_create:
+        # Using update_or_create for POST to effectively upsert
         instance, created = UserVideoInteraction.objects.update_or_create(
             user=validated_data.get('user'),
             video=validated_data.get('video'),
             defaults=validated_data
         ) 
         return instance
-
-        return super().create(validated_data)

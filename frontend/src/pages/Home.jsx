@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import recommenderService from '../services/recommenderService'; // To fetch recommendations
-import VideoCard from '../components/VideoCard'; // The new VideoCard component
+import recommenderService from '../services/recommenderService';
+import VideoCard from '../components/VideoCard';
+import PostCard from '../components/PostCard'; // Import PostCard
 
 const HomePage = () => {
     const [recommendations, setRecommendations] = useState([]);
@@ -66,17 +67,29 @@ const HomePage = () => {
 
     return (
         <div style={pageStyle}>
-            <h2 style={headingStyle}>For You - Recommended Videos</h2>
+            <h2 style={headingStyle}>For You - Recommended Content</h2> {/* Changed heading slightly */}
             {recommendations.length === 0 ? (
                 <p style={{textAlign: 'center', color: '#aaa'}}>
                     No recommendations available at the moment.
-                    Try interacting with some videos to get personalized suggestions!
+                    Try interacting with some content to get personalized suggestions!
                 </p>
             ) : (
                 <div style={feedContainerStyle}>
-                    {recommendations.map(video => (
-                        <VideoCard key={video.id} video={video} />
-                    ))}
+                    {recommendations.map(item => {
+                        if (item.hasOwnProperty('caption')) { // Likely a Post
+                            return <PostCard key={`post-${item.id}`} post={item} />;
+                        } else if (item.hasOwnProperty('title') && item.hasOwnProperty('uploader_username')) { // Likely a Video
+                            return <VideoCard key={`video-${item.id}`} video={item} />;
+                        } else {
+                            console.warn("Unknown item type in recommendations:", item);
+                            return (
+                                <div key={`unknown-${item.id || Math.random()}`} style={{border: '1px dashed red', padding: '10px', margin: '0'}}>
+                                    <p>Unknown item type encountered.</p>
+                                    <pre style={{whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.8em'}}>{JSON.stringify(item, null, 2)}</pre>
+                                </div>
+                            );
+                        }
+                    })}
                 </div>
             )}
         </div>

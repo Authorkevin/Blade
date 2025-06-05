@@ -6,66 +6,76 @@ const VideoCard = ({ video }) => {
 
     // Basic dark theme card style
     const cardStyle = {
-        backgroundColor: '#1e1e1e', // Dark card background
-        border: '1px solid #333',    // Slightly lighter border
+        backgroundColor: '#1e1e1e',
+        border: '1px solid #333',
         borderRadius: '8px',
-        padding: '0px',
-        marginBottom: '16px',
-        boxShadow: '0 4px 8px rgba(0,0,0,0.3)', // More pronounced shadow for cards
+        padding: '16px', // Added padding to the card itself
+        margin: '0', // Assuming grid gap handles spacing
+        boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between'
     };
     const titleStyle = {
-        color: '#bb86fc', // Accent color for titles (light purple)
+        color: '#bb86fc',
         fontSize: '1.25em',
         fontWeight: 'bold',
         marginBottom: '8px',
     };
     const descriptionStyle = {
         fontSize: '0.95em',
-        color: '#b0b0b0', // Lighter grey for description text
+        color: '#b0b0b0',
         marginBottom: '10px',
         lineHeight: '1.5',
-        height: '55px', // Approx 3 lines with line-height 1.5 and font-size 0.95em
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
+        // Removed fixed height to allow natural content flow, especially with video player
+        // height: '55px',
+        // overflow: 'hidden',
+        // textOverflow: 'ellipsis',
     };
     const uploaderStyle = {
         fontSize: '0.9em',
-        color: '#888', // Dimmer text for uploader
+        color: '#888',
         marginBottom: '12px',
     };
     const tagsStyle = {
         fontSize: '0.85em',
-        color: '#03dac5', // Teal accent for tags
+        color: '#03dac5',
         marginBottom: '12px',
         fontStyle: 'italic',
     };
+    const videoPlayerContainerStyle = {
+        width: '100%',
+        backgroundColor: '#000', // Black background for the video area
+        borderRadius: '4px',
+        marginBottom: '15px', // Space below video player
+        position: 'relative', // For potential overlay elements if needed later
+    };
+    const videoPlayerStyle = {
+        width: '100%',
+        borderRadius: '4px',
+        display: 'block', // Ensure it takes up block space
+    };
     const buttonContainerStyle = {
-        marginTop: '15px',
+        marginTop: 'auto', // Push buttons to the bottom if card content is sparse
+        paddingTop: '15px', // Add some space above buttons if video isn't there or content is short
         display: 'flex',
         gap: '10px',
     };
     const buttonStyle = (variant = 'primary') => ({
         padding: '8px 15px',
-        backgroundColor: variant === 'primary' ? '#03dac5' : '#373737', // Teal for primary, dark grey for secondary
-        color: variant === 'primary' ? '#121212' : '#e0e0e0',      // Dark text on primary, light on secondary
+        backgroundColor: variant === 'primary' ? '#03dac5' : '#373737',
+        color: variant === 'primary' ? '#121212' : '#e0e0e0',
         border: 'none',
         borderRadius: '5px',
         cursor: 'pointer',
         fontSize: '0.9em',
         fontWeight: 'bold',
-        transition: 'background-color 0.2s ease, transform 0.1s ease',
-        ':hover': { // Pseudo-selector for hover needs actual CSS or more complex JS handling
-        backgroundColor: variant === 'primary' ? '#018786' : '#4f4f4f',
-            // transform: 'scale(1.03)',
-        }
     });
 
 
     const handleLike = async () => {
         try {
             await recommenderService.likeVideo(video.id);
-            // In a real app, provide better user feedback (e.g., toast notification, update button state)
-            console.log(`Liked "${video.title}"! (Interaction sent to backend)`);
             alert(`Liked "${video.title}"! Interaction sent.`);
         } catch (error) {
             console.error("Error liking video:", error);
@@ -75,9 +85,7 @@ const VideoCard = ({ video }) => {
 
     const handleMarkWatched = async () => {
         try {
-            // Simulate some watch time, e.g. 180 seconds
-            await recommenderService.markAsWatched(video.id, 180);
-            console.log(`Marked "${video.title}" as watched! (Interaction sent)`);
+            await recommenderService.markAsWatched(video.id, 180); // Example watch time
             alert(`Marked "${video.title}" as watched! Interaction sent.`);
         } catch (error) {
             console.error("Error marking as watched:", error);
@@ -87,10 +95,40 @@ const VideoCard = ({ video }) => {
 
     return (
         <div style={cardStyle}>
-            <h3 style={titleStyle}>{video.title}</h3>
-            <p style={descriptionStyle}>{video.description || "No description available."}</p>
-            <p style={uploaderStyle}>Uploaded by: {video.uploader_username || 'Unknown'}</p>
-            {video.tags && <p style={tagsStyle}>Tags: <em>{video.tags.split(',').join(', ')}</em></p>}
+            <div> {/* Content section */}
+                <h3 style={titleStyle}>{video.title || "Untitled Video"}</h3>
+
+                {/* Video Player Section */}
+                {video.video_url ? (
+                    <div style={videoPlayerContainerStyle}>
+                        <video
+                            controls
+                            src={video.video_url}
+                            style={videoPlayerStyle}
+                            onError={(e) => {
+                                console.error('Error loading video:', video.video_url, e);
+                                e.target.style.display='none'; // Hide video player on error
+                                const errorMsg = document.createElement('p');
+                                errorMsg.textContent = 'Video could not be loaded.';
+                                errorMsg.style.color = '#cf6679'; // Error color
+                                if(e.target.parentNode) e.target.parentNode.appendChild(errorMsg);
+                            }}
+                        >
+                            Your browser does not support the video tag.
+                        </video>
+                    </div>
+                ) : (
+                    <div style={{ padding: '10px 0', color: '#888', fontStyle: 'italic' }}>
+                        (No video preview available)
+                    </div>
+                )}
+
+                <p style={descriptionStyle}>{video.description || "No description available."}</p>
+                <p style={uploaderStyle}>Uploaded by: {video.uploader_username || 'Unknown'}</p>
+                {video.tags && <p style={tagsStyle}>Tags: <em>{video.tags.split(',').map(tag => tag.trim()).join(', ')}</em></p>}
+            </div>
+
+            {/* Button Section */}
             <div style={buttonContainerStyle}>
                 <button onClick={handleLike} style={buttonStyle('primary')} title="Like this video">Like 👍</button>
                 <button onClick={handleMarkWatched} style={buttonStyle('secondary')} title="Mark as watched">Mark Watched ✅</button>
