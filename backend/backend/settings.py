@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'chat',
     'recommender', # Add the new recommender app
+    'ads',
 ]
 
 MIDDLEWARE = [

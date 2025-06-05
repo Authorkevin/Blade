@@ -128,7 +128,7 @@ const VideoCard = ({ video }) => {
                 )}
 
                 <p style={descriptionStyle}>{video.description || "No description available."}</p>
-                <p style={uploaderStyle}><Link to={`/profile/${video.uploader_id}`} style={{ color: '#bb86fc', textDecoration: 'none' }}>@{video.uploader_username || 'Unknown'}</Link></p>
+                <p style={uploaderStyle}><Link to={`/profile/${video.uploader}`} style={{ color: '#bb86fc', textDecoration: 'none' }}>@{video.uploader_username || 'Unknown'}</Link></p>
                 {/* {video.tags && <p style={tagsStyle}>Tags: <em>{video.tags.split(',').map(tag => tag.trim()).join(', ')}</em></p>}   */}
             </div>
 

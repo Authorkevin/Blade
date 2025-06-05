@@ -329,6 +329,14 @@ const ProfilePage = () => {
                           onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#03dac5'}>
                          Create New Post
                     </Link>
+                    <Link
+                        to="/ad-center"
+                        style={linkStyle}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#018786'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#03dac5'}
+                    >
+                        Ad Center
+                    </Link>
                 </>
              )}
             </div>

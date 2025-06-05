@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/', include('api.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/recommender/', include('recommender.urls')), # Add recommender app URLs
+    path('api/ads/', include('ads.urls')),
 ]
 
 if settings.DEBUG:
