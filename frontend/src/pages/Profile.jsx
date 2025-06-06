@@ -210,7 +210,7 @@ const ProfilePage = () => {
 
     // Basic styles for dark theme
     const pageStyle = {
-        padding: '20px',
+        padding: '5px',
         fontFamily: 'Arial, sans-serif', // Basic font
     };
     const headingStyle = {
@@ -220,8 +220,9 @@ const ProfilePage = () => {
         paddingBottom: '10px',
     };
     const sectionStyle = {
-        backgroundColor: '#1e1e1e', // Darker card background
+        backgroundColor: '#121212', // Darker card background
         padding: '20px',
+        borderBottom: '1px solid #333',
         borderRadius: '8px',
         marginBottom: '20px',
         boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
@@ -376,7 +377,7 @@ const ProfilePage = () => {
                         }
 
                         return (
-                            <div key={post.id} style={{ border: '1px solid #444', borderRadius: '8px', padding: '15px', backgroundColor: '#2a2a2a' }}>
+                            <div key={post.id} style={{ border: '1px solid #444', borderRadius: '8px', padding: '5px', backgroundColor: '#121212' }}>
                                 {imageUrl && (
                                     <img
                                         src={imageUrl}
@@ -390,6 +391,7 @@ const ProfilePage = () => {
                                         controls
                                         autoPlay
                                         muted
+                                        loop
                                         style={{ width: '100%', height: 'auto', borderRadius: '4px', marginBottom: '10px', backgroundColor: '#000' }}
                                     >
                                         Your browser does not support the video tag.
@@ -401,13 +403,13 @@ const ProfilePage = () => {
                                 </Link>
                             </h4>
                             <p style={{ color: '#c0c0c0', fontSize: '0.95em', marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{post.caption}</p>
-                            {post.keywords && (
+                            {/* {post.keywords && (
                                 <p style={{ fontSize: '0.8em', color: '#888', marginBottom: '5px' }}>
                                     <em>Keywords: {post.keywords}</em>
-                                </p>
-                            )}
+                                </p> 
+                            )} */}
                             <p style={{ fontSize: '0.75em', color: '#666' }}>
-                                Posted on: {new Date(post.created_at).toLocaleDateString()}
+                                {new Date(post.created_at).toLocaleDateString()}
                             </p>
                         </div>
                     ); // Terminates the return statement

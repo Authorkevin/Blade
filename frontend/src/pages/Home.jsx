@@ -68,7 +68,7 @@ const HomePage = () => {
 
     return (
         <div style={pageStyle}>
-            <h2 style={headingStyle}>For You - Recommended Content</h2> {/* Changed heading slightly */}
+            {/* <h2 style={headingStyle}>For You - Recommended Content</h2> */} {/* Changed heading slightly */}
             {recommendations.length === 0 ? (
                 <p style={{textAlign: 'center', color: '#aaa'}}>
                     No recommendations available at the moment.

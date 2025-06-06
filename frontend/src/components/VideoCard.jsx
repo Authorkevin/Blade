@@ -8,10 +8,10 @@ const VideoCard = ({ video }) => {
 
     // Basic dark theme card style
     const cardStyle = {
-        backgroundColor: '#1e1e1e',
+        backgroundColor: '#121212',
         border: '1px solid #333',
         borderRadius: '8px',
-        padding: '16px', // Added padding to the card itself
+        padding: '9px', // Added padding to the card itself
         margin: '0', // Assuming grid gap handles spacing
         boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
         display: 'flex',
@@ -49,7 +49,7 @@ const VideoCard = ({ video }) => {
         width: '100%',
         backgroundColor: '#000', // Black background for the video area
         borderRadius: '4px',
-        marginBottom: '15px', // Space below video player
+        marginBottom: '10px', // Space below video player
         position: 'relative', // For potential overlay elements if needed later
     };
     const videoPlayerStyle = {

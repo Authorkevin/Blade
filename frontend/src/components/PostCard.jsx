@@ -6,10 +6,10 @@ const PostCard = ({ post }) => {
 
     // Basic dark theme card style (similar to VideoCard)
     const cardStyle = {
-        backgroundColor: '#2a2a2a', // Consistent with inline post style used before
+        backgroundColor: '#121212', // Consistent with inline post style used before
         border: '1px solid #444',
         borderRadius: '8px',
-        padding: '16px',
+        padding: '10px',
         margin: '0', // Assuming grid gap handles spacing
         boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
         display: 'flex',
@@ -37,7 +37,7 @@ const PostCard = ({ post }) => {
         marginBottom: '10px',
     };
     const videoContainerStyle = {
-        marginTop: '10px',
+        marginTop: '5px',
         marginBottom: '10px',
     };
     const videoPlayerStyle = {
@@ -86,6 +86,7 @@ const PostCard = ({ post }) => {
                             controls
                             autoPlay
                             muted
+                            loop
                             src={post.video}
                             style={videoPlayerStyle}
                             onError={(e) => {

@@ -86,14 +86,15 @@ const MainLayout = ({ children }) => {
         display: 'flex',
         flexDirection: 'column',
         minHeight: '100vh',
+        minWidth: '100vw',
         backgroundColor: '#121212', // Darker background for Material Design dark theme feel
         color: '#e0e0e0',
     };
 
     const headerStyle = {
-        backgroundColor: '#1e1e1e', // Slightly lighter than main background
+        backgroundColor: '#121212', // Slightly lighter than main background
         color: '#ffffff',
-        padding: '15px 20px',
+        padding: '5px 20px',
         textAlign: 'center',
         borderBottom: '1px solid #333333',
         boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
@@ -108,7 +109,7 @@ const MainLayout = ({ children }) => {
 
     const contentStyle = {
         flexGrow: 1,
-        padding: '20px',
+        padding: '0px',
         paddingBottom: '80px', // Ensure content doesn't hide behind fixed bottom nav
         overflowY: 'auto',
     };

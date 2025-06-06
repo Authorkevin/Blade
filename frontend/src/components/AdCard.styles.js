@@ -1,11 +1,11 @@
 const styles = {
     cardStyle: {
-        backgroundColor: '#2c2c2c', // Darker card background
+        backgroundColor: '#121212', // Darker card background
         color: '#e0e0e0',
         border: '1px solid #444',
         borderRadius: '8px',
-        padding: '15px',
-        marginBottom: '20px',
+        padding: '10px',
+        marginBottom: '10px',
         boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
         maxWidth: '500px', // Or whatever width fits your feed
         margin: '10px auto', // Centered if it's a single column, or adjust for grid
@@ -17,7 +17,7 @@ const styles = {
         objectFit: 'cover', // Ensures the media covers the area, might crop
         borderRadius: '4px',
         marginBottom: '10px',
-        backgroundColor: '#3a3a3a', // Placeholder bg for media area
+        backgroundColor: '#121212', // Placeholder bg for media area
     },
     contentArea: {
         padding: '0 5px', // Some padding if media is full-width to card edge
