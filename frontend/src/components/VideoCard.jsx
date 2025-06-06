@@ -61,10 +61,10 @@ const VideoCard = ({ video }) => {
         marginTop: 'auto', // Push buttons to the bottom if card content is sparse
         paddingTop: '5px', // Add some space above buttons if video isn't there or content is short
         display: 'flex',
-        gap: '10px',
+        gap: '5px',
     };
     const buttonStyle = (variant = 'primary') => ({
-        padding: '5px 10px',
+        padding: '1px 8px',
         backgroundColor: variant === 'primary' ? '#bb86fc' : 'transparent',
         color: variant === 'primary' ? '#121212' : '#e0e0e0',
         border: 'none',
@@ -134,8 +134,33 @@ const VideoCard = ({ video }) => {
 
             {/* Button Section */}
             <div style={buttonContainerStyle}>
-                <button onClick={handleLike} style={buttonStyle('secindary')} title="Like this video">👍</button>
+                <button onClick={handleLike} style={buttonStyle('secondary')} title="Like this video"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="none" stroke="#bb86fc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M32 56
+           L10 34
+           C2 26, 6 12, 20 12
+           C26 12, 30 16, 32 20
+           C34 16, 38 12, 44 12
+           C58 12, 62 26, 54 34
+           L32 56z"/>
+</svg>
+</button>
                 <button onClick={handleMarkWatched} style={buttonStyle('secondary')} title="Mark as watched">✅</button>
+                <button onClick={handleLike} style={buttonStyle('secondary')}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="none" stroke="#bb86fc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 10
+           H58
+           C60 10, 62 12, 62 14
+           V38
+           C62 40, 60 42, 58 42
+           H24
+           L12 54
+           V42
+           H6
+           C4 42, 2 40, 2 38
+           V14
+           C2 12, 4 10, 6 10
+           Z"/>
+</svg>
+</button>
             </div>
         </div>
     );

@@ -52,14 +52,14 @@ const PostCard = ({ post }) => {
         marginBottom: '12px',
     };
     const buttonContainerStyle = {
-        marginTop: '15px',
+        marginTop: '8px',
         display: 'flex',
-        gap: '10px',
+        gap: '5px',
     };
     // Basic button style (can be imported from a shared const if theme is consistent)
     const buttonStyle = (variant = 'primary') => ({
-        padding: '8px 15px',
-        backgroundColor: variant === 'primary' ? '#03dac5' : '#373737',
+        padding: '1px 8px',
+        backgroundColor: variant === 'primary' ? 'transparent' : 'transparent',
         color: variant === 'primary' ? '#121212' : '#e0e0e0',
         border: 'none',
         borderRadius: '5px',
@@ -110,8 +110,32 @@ const PostCard = ({ post }) => {
 
             {/* Bottom content section for buttons */}
             <div style={buttonContainerStyle}>
-                <button onClick={handleLikePost} style={buttonStyle('primary')}>Like Post</button>
-                <button onClick={handleComment} style={buttonStyle('secondary')}>Comment</button>
+                <button onClick={handleLikePost} style={buttonStyle('primary')}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="none" stroke="#bb86fc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M32 56
+           L10 34
+           C2 26, 6 12, 20 12
+           C26 12, 30 16, 32 20
+           C34 16, 38 12, 44 12
+           C58 12, 62 26, 54 34
+           L32 56z"/>
+</svg>
+</button>
+                <button onClick={handleComment} style={buttonStyle('secondary')}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="none" stroke="#bb86fc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 10
+           H58
+           C60 10, 62 12, 62 14
+           V38
+           C62 40, 60 42, 58 42
+           H24
+           L12 54
+           V42
+           H6
+           C4 42, 2 40, 2 38
+           V14
+           C2 12, 4 10, 6 10
+           Z"/>
+</svg>
+</button>
             </div>
         </div>
     );
