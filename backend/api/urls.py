@@ -15,6 +15,7 @@ urlpatterns = [
     path('users/<int:user_id>/follow/', views.FollowToggleView.as_view(), name='follow-toggle'),
     path('users/<int:user_id>/followers/', views.UserFollowersListView.as_view(), name='user-followers'),
     path('users/<int:user_id>/following/', views.UserFollowingListView.as_view(), name='user-following'),
+    path('users/<int:pk>/', views.UserDetailView.as_view(), name='user-detail'), # New UserDetailView path
     # Post Like URL
     path('posts/<int:post_id>/like/', PostLikeToggleView.as_view(), name='post-like-toggle'),
 ]

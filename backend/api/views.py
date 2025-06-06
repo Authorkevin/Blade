@@ -176,3 +176,10 @@ class PostLikeToggleView(APIView):
             return Response({"detail": f"Post {post_id} unliked."}, status=status.HTTP_200_OK)
         except PostLike.DoesNotExist:
             return Response({"detail": "You have not liked this post."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserDetailView(generics.RetrieveAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [AllowAny] # Allow anyone to view user profiles
+    lookup_field = 'pk' # Or 'id', depending on URL conf. 'pk' is common.

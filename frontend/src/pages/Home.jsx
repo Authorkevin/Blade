@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import recommenderService from '../services/recommenderService';
 import VideoCard from '../components/VideoCard';
 import PostCard from '../components/PostCard'; // Import PostCard
+import AdCard from '../components/AdCard'; // Import AdCard
 
 const HomePage = () => {
     const [recommendations, setRecommendations] = useState([]);
@@ -76,15 +77,18 @@ const HomePage = () => {
             ) : (
                 <div style={feedContainerStyle}>
                     {recommendations.map(item => {
-                        if (item.hasOwnProperty('caption')) { // Likely a Post
+                        if (item.type === 'post' && item.hasOwnProperty('caption')) { // Check type for Post
                             return <PostCard key={`post-${item.id}`} post={item} />;
-                        } else if (item.hasOwnProperty('title') && item.hasOwnProperty('uploader_username')) { // Likely a Video
+                        } else if (item.type === 'video' && item.hasOwnProperty('title') && item.hasOwnProperty('uploader_username')) { // Check type for Video
                             return <VideoCard key={`video-${item.id}`} video={item} />;
-                        } else {
-                            console.warn("Unknown item type in recommendations:", item);
+                        } else if (item.type === 'ad' || item.is_ad === true) { // Check for Ad
+                            return <AdCard key={`ad-${item.id}`} ad={item} />;
+                        }
+                         else {
+                            console.warn("Unknown or malformed item type in recommendations:", item);
                             return (
-                                <div key={`unknown-${item.id || Math.random()}`} style={{border: '1px dashed red', padding: '10px', margin: '0'}}>
-                                    <p>Unknown item type encountered.</p>
+                                <div key={`unknown-${item.id || Math.random()}`} style={{border: '1px dashed red', padding: '10px', margin: '0', color: '#fff'}}>
+                                    <p>Unknown item type: {item.type || 'N/A'}</p>
                                     <pre style={{whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.8em'}}>{JSON.stringify(item, null, 2)}</pre>
                                 </div>
                             );

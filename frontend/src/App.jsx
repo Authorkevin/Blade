@@ -12,6 +12,7 @@ import CreatePost from './pages/CreatePost';
 import RegisterPage from './pages/Register';
 import AdPaymentSuccess from './pages/AdPaymentSuccess';
 import AdPaymentCancel from './pages/AdPaymentCancel';
+import AdCenter from './pages/AdCenter';
 
 function Logout() {
   localStorage.clear();
@@ -33,6 +34,7 @@ function App() {
         <Route path="/profile/:userId/store" element={<ErrorBoundary><MainLayout><ProfileStore /></MainLayout></ErrorBoundary>} />
         <Route path="/your-store" element={<ProtectedRoute><MainLayout><ProfileStoreEdit /></MainLayout></ProtectedRoute>} />
         <Route path="/create-post" element={<ProtectedRoute><MainLayout><CreatePost /></MainLayout></ProtectedRoute>} />
+        <Route path="/ad-center" element={<ProtectedRoute><MainLayout><AdCenter /></MainLayout></ProtectedRoute>} />
         <Route path="/ad-payment-success" element={<ProtectedRoute><MainLayout><AdPaymentSuccess /></MainLayout></ProtectedRoute>} />
         <Route path="/ad-payment-cancel" element={<ProtectedRoute><MainLayout><AdPaymentCancel /></MainLayout></ProtectedRoute>} />
       </Routes>

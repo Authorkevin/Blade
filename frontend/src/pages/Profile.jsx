@@ -101,27 +101,39 @@ const ProfilePage = () => {
                     const userDetailResponse = await api.get(`users/${targetUserId}/follow/`); // Use follow endpoint to get is_following
                     // This is not ideal, should be one endpoint for user details.
                     // This is just to get *some* data for the follow button.
+                    // ---- MODIFIED SECTION START ----
+                    // Fetch full user details including username and follow status
+                    const userDetailsResponse = await api.get(`/users/${targetUserId}/`);
+                    const userDetails = userDetailsResponse.data;
+
                     fetchedProfileData = {
-                        id: parseInt(targetUserId), // Ensure it's a number
-                        username: `User ${targetUserId}`, // Placeholder
-                        profile_picture_url: null, // Placeholder
-                        followers_count: 0, // Placeholder
-                        following_count: 0, // Placeholder
-                        is_followed_by_request_user: userDetailResponse.data.is_following
+                        id: userDetails.id,
+                        username: userDetails.username, // Use actual username
+                        profile_picture_url: userDetails.profile_picture_url, // From UserSerializer
+                        followers_count: userDetails.followers_count,       // From UserSerializer
+                        following_count: userDetails.following_count,       // From UserSerializer
+                        is_followed_by_request_user: userDetails.is_followed_by_request_user // From UserSerializer
+                        // bio can be added if UserSerializer provides it, or fetched separately if needed
                     };
+                    // ---- MODIFIED SECTION END ----
                 }
 
                 setProfileData(fetchedProfileData);
                 setProfileError(null);
 
-                // Fetch posts for this profile
+                // Fetch posts for this profile (this part can remain as is)
                 const postsResponse = await api.get(`posts/?user_id=${targetUserId}`);
                 setPosts(postsResponse.data.results || postsResponse.data);
                 setPostsError(null);
 
             } catch (err) {
-                console.error("Failed to fetch profile data:", err);
-                setProfileError("Could not load profile.");
+                console.error("Failed to fetch profile data for user:", targetUserId, err);
+                // Use a more specific error message if possible
+                if (err.response && err.response.status === 404) {
+                    setProfileError(`Profile not found for user ID ${targetUserId}.`);
+                } else {
+                    setProfileError("Could not load profile. The user may not exist or there was a network issue.");
+                }
                 setProfileData(null);
                 setPosts([]);
             } finally {

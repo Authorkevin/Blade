@@ -23,11 +23,12 @@ class AdSerializer(serializers.ModelSerializer):
             'target_region', 'budget',
             'status', # 'status_display',
             'stripe_payment_id',
+            'impressions', 'clicks',  # Added impressions and clicks
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['creator', 'status', 'stripe_payment_id', 'created_at', 'updated_at']
+        read_only_fields = ['creator', 'stripe_payment_id', 'impressions', 'clicks', 'created_at', 'updated_at'] # Removed 'status'
         # Note: 'creator' is set in the view based on request.user
-        # 'status' is initially 'pending_review', then managed by backend/admin/moderator actions
+        # 'status' is initially 'pending_review', then managed by backend/admin/moderator actions. User can pause/resume.
         # 'stripe_payment_id' is set after successful payment
 
     def validate_budget(self, value):

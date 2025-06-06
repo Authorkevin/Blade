@@ -45,6 +45,17 @@ class AdAdmin(admin.ModelAdmin):
     #         return self.readonly_fields + ('creator',)
     #     return self.readonly_fields
 
+    # Actions
+    def approve_ads(self, request, queryset):
+        queryset.update(status='live')
+    approve_ads.short_description = "Approve selected ads (set status to Live)"
+
+    def reject_ads(self, request, queryset):
+        queryset.update(status='rejected')
+    reject_ads.short_description = "Reject selected ads (set status to Rejected)"
+
+    actions = ['approve_ads', 'reject_ads']
+
 admin.site.site_header = "My Project Admin" # Optional: Custom admin site header
 admin.site.site_title = "My Project Admin Portal" # Optional: Custom admin site title
 admin.site.index_title = "Welcome to My Project Admin Portal" # Optional: Custom admin index title

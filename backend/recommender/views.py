@@ -16,6 +16,7 @@ from .utils import get_recommendations_for_user # This is now the original compl
 from .models import Video, UserVideoInteraction
 from .serializers import VideoSerializer, UserVideoInteractionSerializer # VideoSerializer is needed
 from api.serializers import PostSerializer # PostSerializer is needed
+from ads.serializers import AdSerializer # Add this import
 import logging
 # No io or traceback needed for original view
 
@@ -50,15 +51,32 @@ class RecommendationView(APIView):
             return Response({"message": "No recommendations available for you right now. Explore more content!", "items": []}, status=status.HTTP_200_OK)
 
         serialized_items = []
-        for item in recommended_items:
-            if item['type'] == 'video':
-                serializer = VideoSerializer(item['object'], context={'request': request})
-                serialized_items.append(serializer.data)
-            elif item['type'] == 'post':
-                serializer = PostSerializer(item['object'], context={'request': request})
-                serialized_items.append(serializer.data)
+        for item in recommended_items: # item is a dict like {'type': 'post'/'video'/'ad', 'id': ..., 'object': ...}
+            item_object = item.get('object')
+            item_type = item.get('type')
+
+            if not item_object:
+                logger.warning(f"Recommended item missing 'object' field: {item}")
+                continue
+
+            if item_type == 'video':
+                serializer = VideoSerializer(item_object, context={'request': request})
+                item_data = serializer.data
+                item_data['type'] = 'video' # Explicitly set type
+                serialized_items.append(item_data)
+            elif item_type == 'post':
+                serializer = PostSerializer(item_object, context={'request': request})
+                item_data = serializer.data
+                item_data['type'] = 'post' # Explicitly set type
+                serialized_items.append(item_data)
+            elif item_type == 'ad':
+                ad_serializer = AdSerializer(item_object, context={'request': request})
+                item_data = ad_serializer.data
+                item_data['is_ad'] = True # Keep is_ad for clarity if frontend uses it
+                item_data['type'] = 'ad'   # Ensure type is present
+                serialized_items.append(item_data)
             else:
-                logger.warning(f"Unknown item type encountered in recommendations: {item.get('type')} for user {user.id}")
+                logger.warning(f"Unknown item type ('{item_type}') encountered in recommendations for user {request.user.id if request.user.is_authenticated else 'Anonymous'}")
 
         return Response({"items": serialized_items}, status=status.HTTP_200_OK)
 

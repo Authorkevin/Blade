@@ -19,6 +19,10 @@ from api.models import Post, Follow # Import Post and Follow models
 import pandas as pd
 import logging
 import re # For text processing
+from ads.models import Ad, AdImpression # Added
+from django.utils import timezone # Added
+from django.db.models import Count, Q # Added
+import random # Added
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -378,6 +382,67 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
 
         recommended_items.extend(video_recommendations_packaged)
         logger.info(f"Added {len(video_recommendations_packaged)} video recommendations for user {user_id}.")
+
+    # --- Ad Fetching and Injection Logic ---
+    # Fetch live ads
+    live_ads = Ad.objects.filter(status='live')
+
+    candidate_ads = []
+    now = timezone.now() # Renamed now_tz to now for clarity with the change
+    # current_time = now.time() # No longer needed for direct comparison
+    current_date = now.date() # Still needed for impression capping
+
+    for ad in live_ads:
+        # Time of Day Targeting (now DateTime Targeting)
+        if ad.target_time_of_day_start and ad.target_time_of_day_end:
+            if not (ad.target_time_of_day_start <= now <= ad.target_time_of_day_end):
+                continue
+        elif ad.target_time_of_day_start:
+            if now < ad.target_time_of_day_start:
+                continue
+        elif ad.target_time_of_day_end:
+            if now > ad.target_time_of_day_end:
+                continue
+
+        # Frequency Capping (Per Ad)
+        impressions_today_count = AdImpression.objects.filter(
+            ad=ad,
+            user_id=user_id,
+            impression_date=current_date
+        ).count()
+
+        if impressions_today_count >= 3: # Max 3 impressions per user per ad per day
+            continue
+
+        candidate_ads.append(ad)
+
+    random.shuffle(candidate_ads)
+
+    final_recommendations_with_ads = []
+    if recommended_items: # Only inject ads if there's content
+        ad_injection_interval = random.randint(7, 10)
+        ad_idx = 0
+
+        for i, item in enumerate(recommended_items):
+            final_recommendations_with_ads.append(item)
+            if (i + 1) % ad_injection_interval == 0 and ad_idx < len(candidate_ads):
+                selected_ad = candidate_ads[ad_idx]
+                ad_data_for_feed = {
+                    'type': 'ad',
+                    'id': selected_ad.id,
+                    'ad_id': selected_ad.id,
+                    'object': selected_ad,
+                    'is_ad': True
+                }
+                final_recommendations_with_ads.append(ad_data_for_feed)
+                ad_idx += 1
+                ad_injection_interval = random.randint(7, 10)
+
+        recommended_items = final_recommendations_with_ads
+        logger.info(f"Injected {ad_idx} ads into the feed for user {user_id}.")
+    else:
+        logger.info(f"No organic content to inject ads into for user {user_id}.")
+
 
     logger.info(f"Generated {len(recommended_items)} total mixed recommendations for user {user_id}. Breakdown: Posts={len(added_post_ids)}, Videos={len(video_recommendations_packaged)}.")
     return recommended_items[:num_recommendations] # Ensure final list does not exceed num_recommendations

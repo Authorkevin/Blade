@@ -4,8 +4,12 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 import stripe
+from django.shortcuts import get_object_or_404 # Add this
+from django.db import IntegrityError # For handling unique_together constraint violations
+from django.utils import timezone # For AdImpression date
 
-from .models import Ad
+
+from .models import Ad, AdImpression, AdClick # Added AdImpression, AdClick
 from .serializers import AdSerializer
 
 class IsCreatorOrAdmin(permissions.BasePermission):
@@ -233,3 +237,97 @@ class StripeWebhookView(APIView):
             print(f"Webhook info: Unhandled event type {event['type']}")
 
         return HttpResponse(status=200)
+
+
+class AdBudgetEstimateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated] # or IsAuthenticated if imported directly
+
+    def post(self, request, *args, **kwargs):
+        budget_str = request.data.get('budget')
+        # Add other targeting parameters if needed in the future for more complex estimates
+        # keywords = request.data.get('keywords')
+        # target_age_min = request.data.get('target_age_min')
+        # ... etc.
+
+        if budget_str is None:
+            return Response({"error": "Budget parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            budget = float(budget_str)
+        except ValueError:
+            return Response({"error": "Invalid budget format. Must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if budget < 0.01: # A very small minimum to avoid division by zero or nonsensical estimates
+            return Response({"error": "Budget must be a positive value."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Simple estimation logic (placeholders)
+        cost_per_impression = 0.0025  # $0.03 per impression
+        impressions_estimate = int(budget / cost_per_impression)
+
+        # Assume a CTR benchmark (e.g., 1% to 2%)
+        # For simplicity, let's use a fixed CTR for now.
+        # This could be made more dynamic later based on targeting, ad type etc.
+        ctr_benchmark_percentage = 1.5  # 1.5%
+        ctr_benchmark_decimal = ctr_benchmark_percentage / 100.0
+
+        estimated_clicks = int(impressions_estimate * ctr_benchmark_decimal)
+
+        # Cost Per Action (CPA) - assuming action is a click for now
+        if estimated_clicks > 0:
+            cost_per_action_avg = budget / estimated_clicks
+        else:
+            # Avoid division by zero if estimated clicks are 0
+            # This could happen with very small budgets or low CTR assumptions
+            # Return a high CPA or indicate that CPA cannot be estimated.
+            cost_per_action_avg = float('inf') # Or None, or a string message
+
+        estimates = {
+            'impressions_estimate': impressions_estimate,
+            'ctr_benchmark_percentage': ctr_benchmark_percentage, # e.g., 1.5
+            'estimated_clicks': estimated_clicks,
+            'cost_per_action_avg': cost_per_action_avg if cost_per_action_avg != float('inf') else "N/A (too few estimated clicks)"
+        }
+
+        return Response(estimates, status=status.HTTP_200_OK)
+
+
+class TrackAdImpressionAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ad_id, *args, **kwargs):
+        ad = get_object_or_404(Ad, pk=ad_id)
+        user = request.user
+
+        impression_today, created = AdImpression.objects.get_or_create(
+            ad=ad,
+            user=user,
+            impression_date=timezone.now().date(),
+            defaults={'impression_time': timezone.now()} # impression_time will be set on create
+        )
+
+        if created:
+            ad.impressions += 1
+            ad.save(update_fields=['impressions'])
+            return Response({"message": "Ad impression recorded."}, status=status.HTTP_201_CREATED)
+        else:
+            return Response({"message": "Ad impression for today already recorded."}, status=status.HTTP_200_OK)
+
+
+class TrackAdClickAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ad_id, *args, **kwargs):
+        ad = get_object_or_404(Ad, pk=ad_id)
+        user = request.user
+
+        # Create AdClick record
+        AdClick.objects.create(ad=ad, user=user)
+
+        # Increment clicks count on Ad model
+        ad.clicks += 1
+        ad.save(update_fields=['clicks'])
+
+        return Response({
+            "message": "Ad click recorded.",
+            "target_url": ad.target_url
+        }, status=status.HTTP_200_OK)
