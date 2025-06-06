@@ -18,7 +18,7 @@ const PostCard = ({ post }) => {
     };
     const authorStyle = {
         color: '#bb86fc', // Accent color for author
-        fontSize: '1.1em', // Slightly smaller than VideoCard title
+        fontSize: '0.8em', // Slightly smaller than VideoCard title
         fontWeight: 'bold',
         marginBottom: '8px',
     };
@@ -102,8 +102,8 @@ const PostCard = ({ post }) => {
                     </div>
                 )}
 
-                <p style={authorStyle}><Link to={`/profile/${post.user_id} `} style={{ color: '#bb86fc' }}>@{post.user || 'Unknown User'}</Link></p>
                 <p style={captionStyle}>{post.caption || "No caption."}</p>
+                <p style={authorStyle}><Link to={`/profile/${post.user_id} `} style={{ color: '#bb86fc' }}>@{post.user || 'Unknown User'}</Link></p>
 
          {/*       {post.keywords && <p style={keywordsStyle}>Keywords: {post.keywords}</p>} */}
             </div>
