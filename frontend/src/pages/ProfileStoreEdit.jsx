@@ -3,6 +3,105 @@ import api from '../api';
 import { useNavigate } from 'react-router-dom';
 
 function ProfileStoreEdit() {
+    const styles = {
+        container: {
+            padding: '20px',
+            maxWidth: '600px',
+            margin: '0 auto',
+            fontFamily: 'Arial, sans-serif',
+            color: '#e0e0e0',
+            backgroundColor: '#121212'
+        },
+        heading: {
+            color: '#bb86fc',
+            marginBottom: '25px',
+            textAlign: 'center',
+            borderBottom: '1px solid #333',
+            paddingBottom: '10px',
+        },
+        formGroup: {
+            marginBottom: '15px'
+        },
+        label: {
+            display: 'block',
+            marginBottom: '5px',
+            fontWeight: 'bold',
+            color: '#bb86fc'
+        },
+        input: {
+            width: '100%',
+            padding: '10px',
+            boxSizing: 'border-box',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            backgroundColor: '#1e1e1e',
+            color: '#e0e0e0',
+            marginTop: '5px'
+        },
+        textarea: {
+            width: '100%',
+            padding: '10px',
+            boxSizing: 'border-box',
+            minHeight: '80px', // Adjusted minHeight for description
+            border: '1px solid #333',
+            borderRadius: '4px',
+            backgroundColor: '#1e1e1e',
+            color: '#e0e0e0',
+            marginTop: '5px'
+        },
+        select: { // Added select style
+            width: '100%',
+            padding: '10px',
+            boxSizing: 'border-box',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            backgroundColor: '#1e1e1e',
+            color: '#e0e0e0',
+            marginTop: '5px'
+        },
+        button: {
+            padding: '10px 15px',
+            backgroundColor: '#bb86fc',
+            color: '#121212',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            width: '100%',
+            marginTop: '10px' // Added margin top for button
+        },
+        disabledButton: {
+            backgroundColor: '#555',
+            color: '#aaa',
+            cursor: 'not-allowed'
+        },
+        message: {
+            padding: '10px',
+            margin: '15px 0',
+            border: '1px solid transparent',
+            borderRadius: '4px',
+            textAlign: 'center'
+        },
+        successMessage: {
+            backgroundColor: '#03dac5',
+            color: '#121212',
+        },
+        errorMessage: {
+            backgroundColor: '#cf6679',
+            color: '#121212',
+        },
+        fileInput: {
+            width: '100%',
+            padding: '10px',
+            boxSizing: 'border-box',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            backgroundColor: '#1e1e1e',
+            color: '#e0e0e0',
+            marginTop: '5px'
+        }
+    };
+
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
@@ -87,31 +186,33 @@ function ProfileStoreEdit() {
     };
 
     return (
-        <div>
-            <h2>Create New Product</h2>
-            {successMessage && <p style={{ color: 'green' }}>{successMessage}</p>}
-            {error && <p style={{ color: 'red' }}>Error: {error}</p>}
+        <div style={styles.container}>
+            <h2 style={styles.heading}>Create New Product</h2>
+            {successMessage && <div style={{...styles.message, ...styles.successMessage}}>{successMessage}</div>}
+            {error && <div style={{...styles.message, ...styles.errorMessage}}>Error: {error}</div>}
             <form onSubmit={handleSubmit}>
-                <div>
-                    <label htmlFor="name">Product Name:</label>
+                <div style={styles.formGroup}>
+                    <label htmlFor="name" style={styles.label}>Product Name:</label>
                     <input
                         type="text"
                         id="name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         required
+                        style={styles.input}
                     />
                 </div>
-                <div>
-                    <label htmlFor="description">Description:</label>
+                <div style={styles.formGroup}>
+                    <label htmlFor="description" style={styles.label}>Description:</label>
                     <textarea
                         id="description"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
+                        style={styles.textarea}
                     />
                 </div>
-                <div>
-                    <label htmlFor="price">Price:</label>
+                <div style={styles.formGroup}>
+                    <label htmlFor="price" style={styles.label}>Price:</label>
                     <input
                         type="number"
                         id="price"
@@ -119,49 +220,58 @@ function ProfileStoreEdit() {
                         onChange={(e) => setPrice(e.target.value)}
                         required
                         step="0.01"
+                        style={styles.input}
                     />
                 </div>
-                <div>
-                    <label htmlFor="product_type">Product Type:</label>
+                <div style={styles.formGroup}>
+                    <label htmlFor="product_type" style={styles.label}>Product Type:</label>
                     <select
                         id="product_type"
                         value={productType}
                         onChange={(e) => setProductType(e.target.value)}
                         required
+                        style={styles.select}
                     >
                         <option value="physical">Physical</option>
                         <option value="digital">Digital</option>
                     </select>
                 </div>
-                <div>
-                    <label htmlFor="image">Product Image:</label>
+                <div style={styles.formGroup}>
+                    <label htmlFor="image" style={styles.label}>Product Image:</label>
                     <input
                         type="file"
                         id="image"
                         accept="image/*"
                         onChange={handleImageChange}
+                        style={styles.fileInput}
                     />
                 </div>
-                <div>
-                    <label htmlFor="video">Product Video:</label>
+                <div style={styles.formGroup}>
+                    <label htmlFor="video" style={styles.label}>Product Video:</label>
                     <input
                         type="file"
                         id="video"
                         accept="video/*"
                         onChange={handleVideoChange}
+                        style={styles.fileInput}
                     />
                 </div>
                 {productType === 'digital' && (
-                    <div>
-                        <label htmlFor="digital_file">Digital File:</label>
+                    <div style={styles.formGroup}>
+                        <label htmlFor="digital_file" style={styles.label}>Digital File:</label>
                         <input
                             type="file"
                             id="digital_file"
                             onChange={handleDigitalFileChange}
+                            style={styles.fileInput}
                         />
                     </div>
                 )}
-                <button type="submit" disabled={isLoading}>
+                <button
+                    type="submit"
+                    disabled={isLoading}
+                    style={isLoading ? {...styles.button, ...styles.disabledButton} : styles.button}
+                >
                     {isLoading ? 'Creating...' : 'Create Product'}
                 </button>
             </form>

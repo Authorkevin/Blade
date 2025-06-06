@@ -1,12 +1,83 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+// import axios from 'axios'; // Replaced by api instance
+import api from '../api'; // Import api instance
 import { ACCESS_TOKEN, REFRESH_TOKEN } from '../constants'; // Import constants
 
-// It's good practice to use constants for API URLs
-const API_URL = 'http://localhost:8000'; // Or use import.meta.env.VITE_API_URL if defined
+// API_URL constant is no longer needed if using api instance with baseURL
 
 const RegisterPage = () => {
+    const styles = {
+        container: {
+            padding: '20px',
+            maxWidth: '400px',
+            margin: '50px auto',
+            fontFamily: 'Arial, sans-serif',
+            color: '#e0e0e0',
+            backgroundColor: '#121212',
+            borderRadius: '8px',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.5)'
+        },
+        heading: {
+            color: '#bb86fc',
+            marginBottom: '25px',
+            textAlign: 'center',
+        },
+        formGroup: {
+            marginBottom: '15px'
+        },
+        input: {
+            width: '100%',
+            padding: '12px',
+            boxSizing: 'border-box',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            backgroundColor: '#1e1e1e',
+            color: '#e0e0e0',
+        },
+        button: {
+            padding: '12px 15px',
+            backgroundColor: '#bb86fc',
+            color: '#121212',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            width: '100%',
+            marginTop: '10px'
+        },
+        disabledButton: {
+            backgroundColor: '#555',
+            color: '#aaa',
+            cursor: 'not-allowed'
+        },
+        message: {
+            padding: '10px',
+            margin: '15px 0',
+            border: '1px solid transparent',
+            borderRadius: '4px',
+            textAlign: 'center'
+        },
+        successMessage: {
+            backgroundColor: '#03dac5',
+            color: '#121212',
+        },
+        errorMessage: {
+            backgroundColor: '#cf6679',
+            color: '#121212',
+        },
+        linkText: {
+            textAlign: 'center',
+            marginTop: '20px',
+            fontSize: '0.9em'
+        },
+        link: {
+            color: '#03dac5',
+            textDecoration: 'none',
+            fontWeight: 'bold'
+        }
+    };
+
     const [formData, setFormData] = useState({
         email: '',
         username: '',
@@ -35,27 +106,20 @@ const RegisterPage = () => {
 
         try {
             // Step 1: Create the user
-            // Djoser endpoint for user registration
-            // Note: Djoser's /users/ endpoint might not require re_password directly in the payload
-            // if its serializers are configured to handle it from 'password' and a confirmation field.
-            // However, sending it often doesn't hurt if the backend serializer expects it.
-            // The current Register.jsx sends it, so we'll keep it.
-            await axios.post(`${API_URL}/auth/users/`, {
+            await api.post('http://localhost:8000/auth/users/', {
                 email,
                 username,
                 password,
                 re_password
             });
 
-            // setSuccess('Registration successful! Please log in.'); // User created, now log them in.
-            // setLoading(false); // Stop loading before navigating or if login is manual.
-
             // Step 2: Log in the user to get JWT tokens
             let loginResponse;
             try {
-                loginResponse = await axios.post(`${API_URL}/auth/jwt/create/`, {
-                    username: username, // Assuming Djoser uses username for login
-                    password: password
+                loginResponse = await api.post('http://localhost:8000/auth/jwt/create/', {
+                    email, // Add email
+                    username,
+                    password
                 });
             } catch (loginErr) {
                 setLoading(false);
@@ -63,40 +127,33 @@ const RegisterPage = () => {
                 setError(loginErr.response && loginErr.response.data && loginErr.response.data.detail
                     ? `Registration successful, but login failed: ${loginErr.response.data.detail}`
                     : 'Registration successful, but auto-login failed. Please try logging in manually.');
-                // At this point, user is registered but not logged in.
-                // You might want to navigate to login page or show a message.
-                // navigate('/login'); // Optionally redirect to login
                 return;
             }
 
             const { access, refresh } = loginResponse.data;
             localStorage.setItem(ACCESS_TOKEN, access);
             localStorage.setItem(REFRESH_TOKEN, refresh);
+            // api.defaults.headers.common['Authorization'] will be set by interceptor for subsequent api calls
 
             // Step 3: Fetch user details
             try {
-                const userDetailsResponse = await axios.get(`${API_URL}/auth/users/me/`, {
-                    headers: {
-                        'Authorization': `Bearer ${access}`
-                    }
-                });
+                const userDetailsResponse = await api.get('http://localhost:8000/auth/users/me/');
                 localStorage.setItem('user', JSON.stringify(userDetailsResponse.data));
+                if (userDetailsResponse.data.username) {
+                    localStorage.setItem('user_username', userDetailsResponse.data.username);
+                }
                 console.log('User details stored:', userDetailsResponse.data);
 
                 setSuccess('Registration and login successful! Welcome.');
                 console.log('Access Token:', access);
                 console.log('Refresh Token:', refresh);
                 setLoading(false);
-                navigate('/'); // Navigate to home on full success
+                navigate('/');
 
             } catch (userDetailsError) {
                 setLoading(false);
                 console.error('Failed to fetch user details after login:', userDetailsError.response ? userDetailsError.response.data : userDetailsError.message);
-                // Tokens are stored, but user details aren't.
-                // This could be a temporary issue or a permissions problem on /users/me/.
                 setError('Login succeeded but failed to fetch user details. Tokens stored. You might be redirected or try refreshing.');
-                // Depending on app requirements, might still navigate home or to a "complete profile" page.
-                // navigate('/'); // Or handle this state appropriately
             }
 
         } catch (regErr) {
@@ -104,14 +161,13 @@ const RegisterPage = () => {
             console.error('Registration failed:', regErr.response ? regErr.response.data : regErr.message);
             let errorMessage = 'Registration failed.';
             if (regErr.response && regErr.response.data) {
-                // Djoser errors are often field-specific or a 'detail' string
                 const errors = regErr.response.data;
                 if (typeof errors === 'object') {
                     const fieldErrors = [];
                     for (const key in errors) {
-                        fieldErrors.push(`${key}: ${errors[key].join ? errors[key].join(', ') : errors[key]}`);
+                        fieldErrors.push(`${key}: ${Array.isArray(errors[key]) ? errors[key].join(' ') : errors[key]}`);
                     }
-                    errorMessage = fieldErrors.join(' ');
+                    errorMessage = fieldErrors.join('; ');
                 } else if (typeof errors === 'string') {
                     errorMessage = errors;
                 }
@@ -121,13 +177,14 @@ const RegisterPage = () => {
     };
 
     return (
-        <div>
-            <h2>Register</h2>
-            {error && <p style={{ color: 'red' }}>{error}</p>}
-            {success && <p style={{ color: 'green' }}>{success}</p>}
+        <div style={styles.container}>
+            <h2 style={styles.heading}>Register</h2>
+            {error && <div style={{...styles.message, ...styles.errorMessage}}>{error}</div>}
+            {success && <div style={{...styles.message, ...styles.successMessage}}>{success}</div>}
             <form onSubmit={onSubmit}>
-                <div>
+                <div style={styles.formGroup}>
                     <input
+                        style={styles.input}
                         type="email"
                         placeholder="Email"
                         name="email"
@@ -137,8 +194,9 @@ const RegisterPage = () => {
                         disabled={loading}
                     />
                 </div>
-                <div>
+                <div style={styles.formGroup}>
                     <input
+                        style={styles.input}
                         type="text"
                         placeholder="Username"
                         name="username"
@@ -148,8 +206,9 @@ const RegisterPage = () => {
                         disabled={loading}
                     />
                 </div>
-                <div>
+                <div style={styles.formGroup}>
                     <input
+                        style={styles.input}
                         type="password"
                         placeholder="Password"
                         name="password"
@@ -160,8 +219,9 @@ const RegisterPage = () => {
                         disabled={loading}
                     />
                 </div>
-                <div>
+                <div style={styles.formGroup}>
                     <input
+                        style={styles.input}
                         type="password"
                         placeholder="Confirm Password"
                         name="re_password"
@@ -172,10 +232,17 @@ const RegisterPage = () => {
                         disabled={loading}
                     />
                 </div>
-                <button type="submit" disabled={loading}>
+                <button
+                    type="submit"
+                    disabled={loading}
+                    style={loading ? {...styles.button, ...styles.disabledButton} : styles.button}
+                >
                     {loading ? 'Registering...' : 'Register'}
                 </button>
             </form>
+            <p style={styles.linkText}>
+                Already have an account? <a href="/login" style={styles.link}>Login.</a>
+            </p>
         </div>
     );
 };
