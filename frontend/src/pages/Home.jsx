@@ -256,7 +256,7 @@ const HomePage = () => {
         width: '100%',
         overflowY: 'auto',
         height: '100%',
-        scrollSnapType: 'y mandatory',
+        scrollSnapType: 'y proximity',
         padding: '0',
     };
 
@@ -267,7 +267,7 @@ const HomePage = () => {
     };
 
     const cardWrapperStyle = {
-        scrollSnapAlign: 'start',
+        scrollSnapAlign: 'y proximity',
         width: '100%',
         maxWidth: '700px',
         minHeight: '90vh',
