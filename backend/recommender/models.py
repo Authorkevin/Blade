@@ -105,6 +105,10 @@ class UserVideoInteraction(models.Model):
         default=timezone.now,
         help_text="Timestamp of the last interaction."
     )
+    commented = models.BooleanField(
+        default=False,
+        help_text="Did the user comment on this video?"
+    )
 
     def __str__(self):
         user_str = self.user.username if self.user else "Unknown User"
@@ -132,13 +136,16 @@ class UserVideoInteraction(models.Model):
         if self.completed_watch:
             score += 2
         if self.liked is True:
-            score += 3
+            score += 3  # Keep liked score
         if self.liked is False: # Explicit dislike can be a strong negative signal
-            score -= 2
+            score -= 2 # Keep dislike penalty
         if self.shared:
-            score += 2
+            score += 2  # Keep shared score
+        if self.commented:
+            score += 3  # Add score for commenting
+
         # Avoid zero scores if possible for matrix, unless it truly means neutral/no interaction
         # If this interaction record exists, it means there was *some* interaction.
-        # So, minimum score could be 1 if any positive criteria met, or based on watch_time_seconds.
         # For now, it can be 0 if only minor watch time and no other signals.
+        # A base score for any interaction existing could be added if desired e.g. score = max(score, 0.5)
         return score

@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Product, Post, UserProfile, Follow, PostLike # Import Follow, PostLike
+from .models import Product, Post, UserProfile, Follow, PostLike, Comment # Import Comment model
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -74,8 +74,8 @@ class PostSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'user_id', 'caption', 'image', 'video', 'keywords', 'created_at', 'updated_at', 'likes_count'] # Added user_id and likes_count to fields
-        read_only_fields = ['user', 'user_id'] # Added user_id to read_only_fields
+        fields = ['id', 'user', 'user_id', 'caption', 'image', 'video', 'keywords', 'created_at', 'updated_at', 'likes_count', 'view_count', 'watch_time']
+        read_only_fields = ['user', 'user_id']
 
     def get_likes_count(self, obj):
         return obj.likes.count()
@@ -120,3 +120,13 @@ class FollowingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Follow
         fields = ['followed_user', 'created_at']
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    user = serializers.ReadOnlyField(source='user.username')
+    user_id = serializers.ReadOnlyField(source='user.id')
+
+    class Meta:
+        model = Comment # Corrected model
+        fields = ['id', 'user', 'user_id', 'post', 'text', 'created_at']
+        read_only_fields = ['user', 'user_id', 'created_at']

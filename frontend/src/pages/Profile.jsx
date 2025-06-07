@@ -64,58 +64,59 @@ const ProfilePage = () => {
                 // If viewing others, this would be a different endpoint.
                 let fetchedProfileData;
                 if (targetUserId === loggedInUser.id) {
-                    // Fetch own profile data (as it might have more details like email only visible to self)
-                    // and ensure profile picture is up-to-date
-                    const ownProfileResponse = await api.get('profile/'); // Fetches UserProfile specific data
-                    const baseLoggedInUser = getPlaceholderUserData(); // Gets ID, username from localStorage
+                    // Fetch full user details for the logged-in user from /api/users/{id}/
+                    const userDetailResponse = await api.get(`users/${loggedInUser.id}/`);
+                    const userDetails = userDetailResponse.data;
 
-                    let picUrl = baseLoggedInUser.profile_picture_url; // Start with localStorage
-                    if (ownProfileResponse.data && ownProfileResponse.data.profile_picture) {
-                         picUrl = ownProfileResponse.data.profile_picture;
-                         if (!picUrl.startsWith('http')) {
-                            const baseApiUrl = import.meta.env.VITE_API_URL.replace('/api', '');
-                            picUrl = `${baseApiUrl}${picUrl}`;
-                        }
-                    }
-                    // Simulate the UserSerializer structure for own profile
+                    // UserProfile specific data (like bio) can be fetched from /api/profile/
+                    // This also ensures we get the latest profile picture URL if it's only updated via UserProfile endpoint
+                    const userProfileResponse = await api.get('profile/');
+                    const profileSpecificData = userProfileResponse.data;
+
+                    // Construct fetchedProfileData using details from UserSerializer primarily
                     fetchedProfileData = {
-                        ...baseLoggedInUser,
-                        profile_picture_url: picUrl,
-                        bio: ownProfileResponse.data.bio || "",
-                        // Counts and follow status would ideally come from a single user detail endpoint
-                        // For now, own profile won't show follow button, so is_followed_by_request_user is less critical here
-                        followers_count: 0, // Placeholder
-                        following_count: 0, // Placeholder
+                        id: userDetails.id,
+                        username: userDetails.username,
+                        // Email for own profile can be taken from loggedInUser state or UserSerializer if available & preferred
+                        email: loggedInUser.email,
+                        profile_picture_url: userDetails.profile_picture_url, // UserSerializer should provide this
+                        bio: profileSpecificData.bio || (userDetails.profile ? userDetails.profile.bio : ""), // Prioritize UserProfile bio
+                        followers_count: userDetails.followers_count, // From UserSerializer
+                        following_count: userDetails.following_count, // From UserSerializer
                         is_followed_by_request_user: false // Can't follow self
                     };
-                     // Update localStorage with potentially new pic URL
-                    localStorage.setItem('user', JSON.stringify({ ...baseLoggedInUser, profile_picture_url: picUrl }));
 
+                    // Update localStorage and loggedInUser state with potentially new username/pic URL from UserSerializer
+                    const currentStoredUser = JSON.parse(localStorage.getItem('user') || '{}');
+                    const updatedStoredUser = {
+                        ...currentStoredUser, // Preserve other fields like tokens, email
+                        id: userDetails.id, // Ensure ID is consistent
+                        username: userDetails.username,
+                        profile_picture_url: userDetails.profile_picture_url
+                    };
+                    localStorage.setItem('user', JSON.stringify(updatedStoredUser));
+                    // Also update the component's loggedInUser state if it derived from localStorage initially
+                    // This ensures consistency if other parts of ProfilePage rely on loggedInUser state directly
+                    setLoggedInUser(prev => ({
+                        ...prev,
+                        username: userDetails.username,
+                        profile_picture_url: userDetails.profile_picture_url
+                    }));
 
                 } else {
-                    // Placeholder for fetching another user's profile.
-                    // This should hit an endpoint like /api/users/<targetUserId>/
-                    // For now, simulate:
-                    console.warn(`Simulating fetch for user ID: ${targetUserId}. Replace with actual API call.`);
-                    // Assuming VITE_API_URL is "http://localhost:8000/api", then 'users/...' is correct
-                    const userDetailResponse = await api.get(`users/${targetUserId}/follow/`); // Use follow endpoint to get is_following
-                    // This is not ideal, should be one endpoint for user details.
-                    // This is just to get *some* data for the follow button.
-                    // ---- MODIFIED SECTION START ----
-                    // Fetch full user details including username and follow status
+                    // Fetching another user's profile (this part was mostly correct)
                     const userDetailsResponse = await api.get(`/users/${targetUserId}/`);
                     const userDetails = userDetailsResponse.data;
 
                     fetchedProfileData = {
                         id: userDetails.id,
-                        username: userDetails.username, // Use actual username
-                        profile_picture_url: userDetails.profile_picture_url, // From UserSerializer
-                        followers_count: userDetails.followers_count,       // From UserSerializer
-                        following_count: userDetails.following_count,       // From UserSerializer
-                        is_followed_by_request_user: userDetails.is_followed_by_request_user // From UserSerializer
-                        // bio can be added if UserSerializer provides it, or fetched separately if needed
+                        username: userDetails.username,
+                        profile_picture_url: userDetails.profile_picture_url,
+                        bio: userDetails.profile ? userDetails.profile.bio : "", // Assuming UserSerializer nests profile for bio
+                        followers_count: userDetails.followers_count,
+                        following_count: userDetails.following_count,
+                        is_followed_by_request_user: userDetails.is_followed_by_request_user
                     };
-                    // ---- MODIFIED SECTION END ----
                 }
 
                 setProfileData(fetchedProfileData);

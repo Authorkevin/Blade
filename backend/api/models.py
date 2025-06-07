@@ -32,6 +32,8 @@ class Post(models.Model):
     image = models.ImageField(upload_to='post_images/', null=True, blank=True)
     video = models.FileField(upload_to='post_videos/', null=True, blank=True)
     keywords = models.TextField(blank=True) # Storing as TextField for flexibility
+    view_count = models.IntegerField(default=0)
+    watch_time = models.FloatField(default=0.0, help_text="Total watch time in seconds")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -93,3 +95,16 @@ class PostLike(models.Model):
 
     def __str__(self):
         return f"{self.user.username} likes Post {self.post.id}"
+
+
+class Comment(models.Model):
+    user = models.ForeignKey(User, related_name='comments', on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, related_name='comments', on_delete=models.CASCADE)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Comment by {self.user.username} on Post {self.post.id}"

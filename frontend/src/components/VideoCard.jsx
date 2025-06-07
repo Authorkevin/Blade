@@ -1,10 +1,43 @@
-import React from 'react';
-import recommenderService from '../services/recommenderService'; // For interaction buttons
-import { Link, useParams } from 'react-router-dom'; // Import useParams
+import React, { useState, useEffect, useRef } from 'react';
+import recommenderService from '../services/recommenderService';
+import { Link } from 'react-router-dom';
+import { getComments, addComment } from '../api'; // Import comment functions
 
-
-const VideoCard = ({ video }) => {
+const VideoCard = ({ video, isPlaying, id }) => {
     if (!video) return null;
+
+    const videoRef = useRef(null);
+    const [isLiked, setIsLiked] = useState(video.is_liked_by_user || false);
+    const [likeCount, setLikeCount] = useState(Number(video.likes_count) || 0);
+
+    const [comments, setComments] = useState([]);
+    const [newCommentText, setNewCommentText] = useState('');
+    const [showComments, setShowComments] = useState(false);
+    const [commentsLoading, setCommentsLoading] = useState(false);
+    const [commentError, setCommentError] = useState('');
+
+    // Determine the correct post ID for comments.
+    // This assumes 'video.id' is for recommender.Video and 'video.source_post_id' links to api.Post
+    // Or, if video object itself is a Post that is a video, then video.id is the postID.
+    // For VideoCard, usually 'id' prop is the video's own ID (recommender.Video.id).
+    // We need the Post ID for comments. Let's assume 'video.source_post_id' is passed.
+    // If not, try 'video.id' as a fallback if this VideoCard might also render Post objects.
+    const postIdForComments = video.source_post_id || video.id;
+
+
+    useEffect(() => {
+        if (videoRef.current) {
+            if (isPlaying) {
+                videoRef.current.play().catch(error => {
+                    // Autoplay was prevented, usually because the page hasn't been interacted with yet.
+                    // Or if the video is not muted and autoplay without sound is not allowed.
+                    console.warn(`Video play prevented for ID ${id}:`, error);
+                });
+            } else {
+                videoRef.current.pause();
+            }
+        }
+    }, [isPlaying, id]); // Add id to dependencies if it can change, though typically it won't for a rendered card
 
     // Basic dark theme card style
     const cardStyle = {
@@ -74,23 +107,79 @@ const VideoCard = ({ video }) => {
         fontWeight: 'bold',
     });
 
-
     const handleLike = async () => {
+        const originalIsLiked = isLiked;
+        const originalLikeCount = likeCount;
+
+        setIsLiked(!isLiked);
+        setLikeCount(isLiked ? likeCount - 1 : likeCount + 1);
+
         try {
+            // We assume recommenderService.likeVideo(video.id) handles the toggle logic
+            // or that separate like/unlike functions would be available if needed.
+            // For this task, we'll call it once, assuming it toggles or sets the new state.
+            // If it's not a toggle, the optimistic UI will reflect a toggle,
+            // but the backend might only perform a "like" or "unlike" action.
             await recommenderService.likeVideo(video.id);
-            alert(`Liked "${video.title}"! Interaction sent.`);
+            // If recommenderService.likeVideo returns updated like count or status, use it here.
+            // For now, relying on optimistic update.
         } catch (error) {
-            console.error("Error liking video:", error);
-            alert(`Error liking video: ${error.message || 'Unknown error'}`);
+            alert.error("Error toggling like for video:", error);
+            setIsLiked(originalIsLiked); // Revert UI on error
+            setLikeCount(originalLikeCount);
+            alert(`Error updating like status: ${error.message || 'Unknown error'}`);
+        }
+    };
+
+    const fetchVideoComments = async () => {
+        if (!postIdForComments) {
+            setCommentError("Cannot load comments: Post ID not available.");
+            return;
+        }
+        setCommentsLoading(true);
+        setCommentError('');
+        try {
+            const response = await getComments(postIdForComments);
+            setComments(response.data || []);
+        } catch (error) {
+            alert.error("Failed to fetch video comments:", error);
+            setCommentError('Failed to load comments.');
+            setComments([]);
+        } finally {
+            setCommentsLoading(false);
+        }
+    };
+
+    const handleToggleComments = () => {
+        const newShowComments = !showComments;
+        setShowComments(newShowComments);
+        if (newShowComments && postIdForComments) {
+            fetchVideoComments();
+        }
+    };
+
+    const handleCommentSubmit = async (e) => {
+        e.preventDefault();
+        if (!newCommentText.trim() || !postIdForComments) return;
+
+        try {
+            const newComment = { text: newCommentText };
+            const response = await addComment(postIdForComments, newComment);
+            setComments(prevComments => [response.data, ...prevComments]);
+            setNewCommentText('');
+        } catch (error) {
+            alert.error("Failed to add video comment:", error);
+            setCommentError(`Failed to post comment: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
         }
     };
 
     const handleMarkWatched = async () => {
         try {
-            await recommenderService.markAsWatched(video.id, 180); // Example watch time
+            // Use 'id' (which is video.id from props) for recommenderService calls
+            await recommenderService.markAsWatched(id, 180);
             alert(`Marked "${video.title}" as watched! Interaction sent.`);
         } catch (error) {
-            console.error("Error marking as watched:", error);
+            alert.error("Error marking as watched:", error);
             alert(`Error marking as watched: ${error.message || 'Unknown error'}`);
         }
     };
@@ -104,18 +193,25 @@ const VideoCard = ({ video }) => {
                 {video.video_url ? (
                     <div style={videoPlayerContainerStyle}>
                         <video
-                            controls
-                            autoPlay
-                            muted
+                            controls // Keep this instance
+                            ref={videoRef} // Attach the ref
+                            // controls attribute removed from here
+                            muted // Essential for most autoplay policies
+                            loop // Optional: if videos should loop when active
                             src={video.video_url}
                             style={videoPlayerStyle}
+                            data-video-id={id} // Add data attribute for parent to query
                             onError={(e) => {
                                 console.error('Error loading video:', video.video_url, e);
-                                e.target.style.display='none'; // Hide video player on error
-                                const errorMsg = document.createElement('p');
-                                errorMsg.textContent = 'Video could not be loaded.';
-                                errorMsg.style.color = '#cf6679'; // Error color
-                                if(e.target.parentNode) e.target.parentNode.appendChild(errorMsg);
+                                // e.target.style.display='none'; // Hide video player on error - this might be too abrupt
+                                const parentNode = e.target.parentNode;
+                                if (parentNode) {
+                                    e.target.style.display='none';
+                                    const errorMsg = document.createElement('p');
+                                    errorMsg.textContent = 'Video could not be loaded.';
+                                    errorMsg.style.color = '#cf6679'; // Error color
+                                    parentNode.appendChild(errorMsg);
+                                }
                             }}
                         >
                             Your browser does not support the video tag.
@@ -133,35 +229,64 @@ const VideoCard = ({ video }) => {
             </div>
 
             {/* Button Section */}
-            <div style={buttonContainerStyle}>
-                <button onClick={handleLike} style={buttonStyle('secondary')} title="Like this video"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="none" stroke="#bb86fc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M32 56
-           L10 34
-           C2 26, 6 12, 20 12
-           C26 12, 30 16, 32 20
-           C34 16, 38 12, 44 12
-           C58 12, 62 26, 54 34
-           L32 56z"/>
-</svg>
-</button>
-                <button onClick={handleMarkWatched} style={buttonStyle('secondary')} title="Mark as watched">✅</button>
-                <button onClick={handleLike} style={buttonStyle('secondary')}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="none" stroke="#bb86fc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M6 10
-           H58
-           C60 10, 62 12, 62 14
-           V38
-           C62 40, 60 42, 58 42
-           H24
-           L12 54
-           V42
-           H6
-           C4 42, 2 40, 2 38
-           V14
-           C2 12, 4 10, 6 10
-           Z"/>
-</svg>
-</button>
+            <div style={{...buttonContainerStyle, alignItems: 'center' }}>
+                <button onClick={handleLike} style={buttonStyle('secondary')} title="Like this video">
+                    {isLiked ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="#bb86fc">
+                          <path d="M32 56 L10 34 C2 26, 6 12, 20 12 C26 12, 30 16, 32 20 C34 16, 38 12, 44 12 C58 12, 62 26, 54 34 L32 56z"/>
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="none" stroke="#bb86fc" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M32 56 L10 34 C2 26, 6 12, 20 12 C26 12, 30 16, 32 20 C34 16, 38 12, 44 12 C58 12, 62 26, 54 34 L32 56z"/>
+                        </svg>
+                    )}
+                </button>
+                <span style={{ color: '#e0e0e0', fontSize: '0.9em', marginLeft: '0px' }}>{likeCount}</span>
+
+                {postIdForComments && ( // Only show comment button if postId is available
+                    <button onClick={handleToggleComments} style={{...buttonStyle('secondary'), marginLeft: '5px'}} title={showComments ? "Hide Comments" : "View Comments"}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" fill="none" stroke="#bb86fc" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 10 H58 C60 10, 62 12, 62 14 V38 C62 40, 60 42, 58 42 H24 L12 54 V42 H6 C4 42, 2 40, 2 38 V14 C2 12, 4 10, 6 10 Z"/>
+                        </svg>
+                    </button>
+                )}
+                <button onClick={handleMarkWatched} style={{...buttonStyle('secondary'), marginLeft: '10px'}} title="Mark as watched">✅</button>
             </div>
+
+            {showComments && postIdForComments && (
+                <div style={{ marginTop: '15px', borderTop: '1px solid #333', paddingTop: '10px' }}>
+                    <h4 style={{ color: '#bb86fc', marginBottom: '10px', fontSize: '1em' }}>Comments</h4>
+                    <form onSubmit={handleCommentSubmit} style={{ marginBottom: '10px', display: 'flex', gap: '5px' }}>
+                        <textarea
+                            value={newCommentText}
+                            onChange={(e) => setNewCommentText(e.target.value)}
+                            placeholder="Write a comment..."
+                            rows="2"
+                            style={{ flexGrow: 1, padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#222', color: '#e0e0e0', resize: 'vertical' }}
+                        />
+                        <button type="submit" style={{ ...buttonStyle('primary'), backgroundColor: '#03dac5', color: '#121212', padding: '8px 12px' }}>Post</button>
+                    </form>
+                    {commentError && <p style={{color: 'red', fontSize: '0.9em'}}>{commentError}</p>}
+                    {commentsLoading && <p style={{color: '#aaa'}}>Loading comments...</p>}
+                    {!commentsLoading && comments.length === 0 && !commentError && <p style={{color: '#aaa', fontSize: '0.9em'}}>No comments yet.</p>}
+
+                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                        {comments.map(comment => (
+                            <div key={comment.id} style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+                                <p style={{ margin: 0, fontSize: '0.8em', color: '#bb86fc' }}>
+                                     <Link to={`/profile/${comment.user_id}`} style={{ color: '#bb86fc', fontWeight: 'bold', textDecoration: 'none' }}>
+                                        @{comment.user || 'User'}
+                                    </Link>
+                                    <span style={{color: '#777', marginLeft: '10px', fontSize:'0.9em'}}>
+                                        {new Date(comment.created_at).toLocaleString()}
+                                    </span>
+                                </p>
+                                <p style={{ margin: '4px 0 0', fontSize: '0.95em', color: '#e0e0e0', whiteSpace: 'pre-wrap' }}>{comment.text}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

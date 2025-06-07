@@ -1,8 +1,9 @@
 import logging
-from django.db.models.signals import post_save, post_delete # Ensure post_delete is imported
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import Post, PostLike # Assuming Post is already imported for the other signal
-from recommender.models import Video, UserVideoInteraction # Import UserVideoInteraction
+from django.utils import timezone # Import timezone
+from .models import Post, PostLike, Comment # Import Comment
+from recommender.models import Video, UserVideoInteraction
 
 logger = logging.getLogger(__name__)
 
@@ -115,3 +116,46 @@ def handle_post_like_delete(sender, instance, **kwargs):
         logger.info(f"Updated UserVideoInteraction (liked=None) for User {user.id} and Video {recommender_video_entry.id} due to PostLike deletion.")
     else:
         logger.info(f"PostLike deleted for User {user.id} and Video {recommender_video_entry.id}, but no existing UserVideoInteraction found to update liked status for.")
+
+
+@receiver(post_save, sender=Comment)
+def handle_new_comment(sender, instance, created, **kwargs):
+    """
+    Signal handler to update UserVideoInteraction when a new Comment is created.
+    """
+    if created:
+        comment = instance
+        commenting_user = comment.user
+        post = comment.post
+
+        try:
+            video = Video.objects.filter(source_post=post).first()
+        except Exception as e: # Broad exception to catch potential errors during DB query
+            logger.error(f"Error fetching Video for Post {post.id} on Comment creation: {e}")
+            video = None # Ensure video is None if query fails
+
+        if video:
+            try:
+                interaction, int_created = UserVideoInteraction.objects.get_or_create(
+                    user=commenting_user,
+                    video=video,
+                    defaults={'interaction_timestamp': timezone.now()} # Set initial timestamp if created
+                )
+                interaction.commented = True
+                interaction.interaction_timestamp = timezone.now() # Update timestamp for this new interaction
+                interaction.save()
+
+                if int_created:
+                    logger.info(f"Created UserVideoInteraction (commented=True) for User {commenting_user.id} and Video {video.id} due to new Comment.")
+                else:
+                    logger.info(f"Updated UserVideoInteraction (commented=True) for User {commenting_user.id} and Video {video.id} due to new Comment.")
+            except Exception as e:
+                logger.error(f"Error creating/updating UserVideoInteraction for Comment on Video {video.id} by User {commenting_user.id}: {e}")
+        else:
+            logger.info(f"New Comment on Post {post.id}, but no corresponding recommender.Video entry found. Skipping UserVideoInteraction update for comment.")
+
+# Connect the signal handler
+# This line should ideally be in apps.py or signals.py loaded by AppConfig,
+# but for this tool's execution flow, placing it here might be necessary if apps.py is not reloaded.
+post_save.connect(handle_new_comment, sender=Comment)
+# However, Django's @receiver decorator handles the connection automatically.

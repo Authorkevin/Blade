@@ -1,11 +1,12 @@
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.models import User
+from django.db.models import F # Import F object
 from rest_framework import generics, permissions, status, views
 from .serializers import (
     UserSerializer, ProductSerializer, PostSerializer, UserProfileSerializer,
-    FollowSerializer, FollowerSerializer, FollowingSerializer # Added Follow serializers
+    FollowSerializer, FollowerSerializer, FollowingSerializer, CommentSerializer # Added CommentSerializer
 )
-from .models import Product, Post, UserProfile, Follow, PostLike # Added Follow model, PostLike
+from .models import Product, Post, UserProfile, Follow, PostLike, Comment # Added Comment model
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from rest_framework.views import APIView # Added APIView for PostLikeToggleView
@@ -183,3 +184,96 @@ class UserDetailView(generics.RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [AllowAny] # Allow anyone to view user profiles
     lookup_field = 'pk' # Or 'id', depending on URL conf. 'pk' is common.
+
+
+class CommentListCreateView(generics.ListCreateAPIView):
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        post_id = self.kwargs.get('post_pk') # Ensure this matches the URL kwarg
+        return Comment.objects.filter(post_id=post_id).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        post_id = self.kwargs.get('post_pk')
+        post = get_object_or_404(Post, id=post_id)
+        serializer.save(user=self.request.user, post=post)
+
+
+class RecordEngagementView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_pk): # Ensure this matches the URL kwarg
+        post_obj = get_object_or_404(Post, pk=post_pk)
+        current_user = request.user
+
+        watch_time_increment_str = request.data.get('watch_time_increment')
+        watch_time_increment_float = 0.0
+        is_watch_time_update = False
+
+        if watch_time_increment_str:
+            try:
+                watch_time_increment_float = float(watch_time_increment_str)
+                if watch_time_increment_float < 0:
+                    return Response({"detail": "watch_time_increment cannot be negative."}, status=status.HTTP_400_BAD_REQUEST)
+                if watch_time_increment_float > 0:
+                    is_watch_time_update = True
+            except ValueError:
+                return Response({"detail": "Invalid watch_time_increment format."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update Post object
+        if is_watch_time_update:
+            post_obj.watch_time = F('watch_time') + watch_time_increment_float
+            post_obj.save(update_fields=['watch_time'])
+            logger.info(f"Updated watch_time for Post {post_obj.id} by {watch_time_increment_float} seconds.")
+        else:
+            # This is a "new view" registration call
+            post_obj.view_count = F('view_count') + 1
+            post_obj.save(update_fields=['view_count'])
+            logger.info(f"Incremented view_count for Post {post_obj.id}.")
+
+        post_obj.refresh_from_db()
+
+        # Update UserVideoInteraction
+        if current_user.is_authenticated:
+            try:
+                # Assuming Video model is imported from recommender.models
+                from recommender.models import Video, UserVideoInteraction
+                from django.utils import timezone
+
+                video = Video.objects.filter(source_post=post_obj).first()
+                if video:
+                    interaction, created = UserVideoInteraction.objects.get_or_create(
+                        user=current_user,
+                        video=video,
+                        defaults={'interaction_timestamp': timezone.now()} # Default for creation
+                    )
+
+                    interaction_updated_fields = []
+                    if is_watch_time_update: # Only update UVI watch_time if it's a watch time call
+                        interaction.watch_time_seconds = F('watch_time_seconds') + watch_time_increment_float
+                        interaction_updated_fields.append('watch_time_seconds')
+
+                    # Always update interaction_timestamp for any engagement
+                    interaction.interaction_timestamp = timezone.now()
+                    interaction_updated_fields.append('interaction_timestamp')
+
+                    interaction.save(update_fields=interaction_updated_fields)
+
+                    log_message_action = "Created" if created else "Updated"
+                    if is_watch_time_update:
+                        logger.info(f"{log_message_action} UserVideoInteraction for User {current_user.id}, Video {video.id}. Watch time incremented by {watch_time_increment_float}. Timestamp updated.")
+                    else: # New view registration
+                        logger.info(f"{log_message_action} UserVideoInteraction for User {current_user.id}, Video {video.id}. Timestamp updated due to new view.")
+                else:
+                    logger.info(f"RecordEngagementView: Post {post_obj.id} has no corresponding recommender.Video. Skipping UserVideoInteraction update.")
+
+            except ImportError: # Catch if recommender models are not found
+                logger.error("Recommender models (Video, UserVideoInteraction) could not be imported. Skipping UserVideoInteraction update.")
+            except Exception as e:
+                logger.error(f"Error in RecordEngagementView updating UserVideoInteraction: {e}", exc_info=True)
+
+        return Response(
+            {"detail": "Engagement recorded.", "view_count": post_obj.view_count, "watch_time": post_obj.watch_time},
+            status=status.HTTP_200_OK
+        )

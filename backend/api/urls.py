@@ -17,5 +17,9 @@ urlpatterns = [
     path('users/<int:user_id>/following/', views.UserFollowingListView.as_view(), name='user-following'),
     path('users/<int:pk>/', views.UserDetailView.as_view(), name='user-detail'), # New UserDetailView path
     # Post Like URL
-    path('posts/<int:post_id>/like/', PostLikeToggleView.as_view(), name='post-like-toggle'),
+    path('posts/<int:post_id>/like/', PostLikeToggleView.as_view(), name='post-like-toggle'), # Existing, uses post_id
+    # Comments URL for a specific post
+    path('posts/<int:post_pk>/comments/', views.CommentListCreateView.as_view(), name='post-comments-list-create'),
+    # Record Engagement URL for a specific post
+    path('posts/<int:post_pk>/record-engagement/', views.RecordEngagementView.as_view(), name='post-record-engagement'),
 ]

@@ -266,35 +266,74 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
         user_id_to_idx = RECOMMENDER_DATA_CACHE.get("user_id_to_idx", {})
 
         # Make sure these are not None when passed to fallback by scope.
-        # build_interaction_data_and_matrices already sets defaults if None, but this is an extra guard.
-        video_features_map_cache = RECOMMENDER_DATA_CACHE.get("video_features_map") if RECOMMENDER_DATA_CACHE.get("video_features_map") is not None else {}
-        all_post_keywords_cache_set = set(RECOMMENDER_DATA_CACHE.get("all_post_keywords")) if RECOMMENDER_DATA_CACHE.get("all_post_keywords") is not None else set()
-        user_follows_map_cache = RECOMMENDER_DATA_CACHE.get("user_follows_map") if RECOMMENDER_DATA_CACHE.get("user_follows_map") is not None else {}
+        video_features_map_cache = RECOMMENDER_DATA_CACHE.get("video_features_map", {})
+        all_post_keywords_cache_set = set(RECOMMENDER_DATA_CACHE.get("all_post_keywords", []))
+        user_follows_map_cache = RECOMMENDER_DATA_CACHE.get("user_follows_map", {})
 
-        KEYWORD_BOOST_FACTOR = 0.1
-        FOLLOWED_CREATOR_BOOST_FACTOR = 0.5
+        # Define weights for fallback scoring
+        VIEW_COUNT_WEIGHT = 0.2
+        WATCH_TIME_WEIGHT = 0.1 # Per second or normalized
+        LIKES_WEIGHT = 0.3
+        COMMENTS_WEIGHT = 0.25
+        KEYWORD_BOOST_FACTOR = 0.1 # Existing
+        FOLLOWED_CREATOR_BOOST_FACTOR = 0.5 # Existing
+
 
         # Fallback function (returns list of Video objects)
-        def get_fallback_video_recommendations(num_recs, user_id_for_fallback): # Added user_id param
+        def get_fallback_video_recommendations(num_recs, user_id_for_fallback, excluded_video_ids=None):
             logger.info(f"Using fallback for videos for user {user_id_for_fallback}, num_recs={num_recs}.")
+            if excluded_video_ids is None:
+                excluded_video_ids = set()
 
-            followed_creator_ids = set(user_follows_map_cache.get(user_id_for_fallback, [])) # Uses guarded cache variable
-            recent_videos_qs = Video.objects.all().select_related('uploader').order_by('-upload_timestamp')
+            followed_creator_ids = set(user_follows_map_cache.get(user_id_for_fallback, []))
 
-            if not recent_videos_qs.exists():
-                logger.warning(f"Fallback video recommendations: Video.objects.all() returned no videos for user {user_id_for_fallback}.")
+            # Fetch videos, their related post stats, and uploader info
+            videos_qs = Video.objects.select_related('uploader', 'source_post') \
+                .annotate(
+                    total_likes=Count('source_post__likes', distinct=True),
+                    total_comments=Count('source_post__comments', distinct=True)
+                ) \
+                .exclude(id__in=excluded_video_ids) \
+                .order_by('-upload_timestamp') # Initial sort, will be re-sorted by score
 
-            scored_recent_videos = []
-            for video in recent_videos_qs:
+            if not videos_qs.exists():
+                logger.warning(f"Fallback video recommendations: No videos found after initial filters for user {user_id_for_fallback}.")
+                return []
+
+            scored_videos = []
+            for video in videos_qs:
                 score = 0.0
-                video_kw = set(video_features_map_cache.get(video.id, [])) # Use guarded cache variable
-                keyword_matches = len(video_kw.intersection(all_post_keywords_cache_set)) # Use guarded cache variable
-                if keyword_matches > 0: score += KEYWORD_BOOST_FACTOR * keyword_matches
-                if video.uploader_id in followed_creator_ids: score += FOLLOWED_CREATOR_BOOST_FACTOR * (1 + score)
-                scored_recent_videos.append({'video': video, 'score': score})
 
-            scored_recent_videos.sort(key=lambda x: x['score'], reverse=True)
-            return [v['video'] for v in scored_recent_videos[:num_recs]]
+                # Content-based keyword matching (existing logic)
+                video_kw = set(video_features_map_cache.get(video.id, []))
+                keyword_matches = len(video_kw.intersection(all_post_keywords_cache_set))
+                if keyword_matches > 0:
+                    score += KEYWORD_BOOST_FACTOR * keyword_matches
+
+                # Followed creator boost (existing logic)
+                if video.uploader_id in followed_creator_ids:
+                    score += FOLLOWED_CREATOR_BOOST_FACTOR * (1 + score) # Compounding boost
+
+                # New scoring based on Post engagement stats
+                if video.source_post:
+                    # Normalize or cap view_count and watch_time to prevent extreme values? For now, direct use.
+                    # Consider that source_post.watch_time is total seconds.
+                    # A simple approach: add them to score, weighted.
+                    score += (video.source_post.view_count or 0) * VIEW_COUNT_WEIGHT
+                    score += (video.source_post.watch_time or 0) * WATCH_TIME_WEIGHT # This could be large
+                    score += (video.total_likes or 0) * LIKES_WEIGHT
+                    score += (video.total_comments or 0) * COMMENTS_WEIGHT
+
+                scored_videos.append({'video': video, 'score': score})
+
+            # Sort by the calculated score
+            scored_videos.sort(key=lambda x: x['score'], reverse=True)
+
+            # Log top 5 scores for debugging
+            # top_5_debug = [(v['video'].id, v['video'].title, v['score']) for v in scored_videos[:5]]
+            # logger.debug(f"Fallback top 5 scored videos: {top_5_debug}")
+
+            return [v['video'] for v in scored_videos[:num_recs]]
 
         cf_recommended_video_objects = []
 
@@ -370,12 +409,27 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
                 break
 
         num_fallback_needed = num_video_recs_needed - len(video_recommendations_packaged)
+
+        # Determine interacted video IDs for exclusion in fallback
+        user_matrix_idx = user_id_to_idx.get(user_id)
+        interacted_video_ids_for_fallback_exclusion = set()
+        if user_matrix_idx is not None and user_matrix_idx < user_item_df.shape[0]:
+            user_interactions_vector = user_item_df.iloc[user_matrix_idx].values
+            interacted_video_indices = np.where(user_interactions_vector > 0.1)[0]
+            for idx in interacted_video_indices:
+                video_id = video_idx_to_id.get(idx)
+                if video_id:
+                    interacted_video_ids_for_fallback_exclusion.add(video_id)
+
         if num_fallback_needed > 0:
             logger.info(f"Need {num_fallback_needed} more videos from fallback for user {user_id}.")
-            fallback_video_objects = get_fallback_video_recommendations(num_fallback_needed, user_id)
+            # Pass interacted video IDs to exclude them from fallback
+            fallback_video_objects = get_fallback_video_recommendations(num_fallback_needed, user_id, excluded_video_ids=interacted_video_ids_for_fallback_exclusion)
             for video_obj in fallback_video_objects: # This loop should be robust
                 if len(video_recommendations_packaged) < num_video_recs_needed: # Double check limit
-                    video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
+                    # Ensure not to add videos already recommended by CF, though CF list is usually small/specific
+                    if not any(rec_vid['id'] == video_obj.id for rec_vid in video_recommendations_packaged):
+                         video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
                 else:
                     break # Stop if limit reached
         # --- End of adapted video recommendation logic ---
