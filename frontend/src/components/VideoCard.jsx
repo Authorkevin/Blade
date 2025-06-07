@@ -259,7 +259,7 @@ const VideoCard = ({ video, isPlaying, id }) => {
                         <textarea
                             value={newCommentText}
                             onChange={(e) => setNewCommentText(e.target.value)}
-                            placeholder="Comment..."
+                            placeholder="Comment"
                             rows="2"
                             style={{ flexGrow: 1, padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#222', color: '#e0e0e0', resize: 'vertical' }}
                         />
