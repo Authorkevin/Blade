@@ -271,7 +271,7 @@ const HomePage = () => {
         width: '100%',
         maxWidth: '700px',
         minHeight: '90vh',
-        margin: '0 auto 20px auto',
+        margin: '0 auto 10px auto',
         padding: '1px 0',
         display: 'flex',
         justifyContent: 'center',

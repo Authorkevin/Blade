@@ -21,11 +21,11 @@ api.interceptors.request.use(
 
 // Post related API calls
 export const likePost = (postId) => {
-    return api.post(`/posts/${postId}/like/`); // Removed leading /api
+    return api.post(`posts/${postId}/like/`); // Removed leading /api
 };
 
 export const unlikePost = (postId) => {
-    return api.delete(`/posts/${postId}/like/`); // Removed leading /api
+    return api.delete(`posts/${postId}/like/`); // Removed leading /api
 };
 
 // Comment related API calls
@@ -35,7 +35,7 @@ export const getComments = (postId) => {
 
 export const addComment = (postId, commentData) => {
     // commentData should be an object like { text: "your comment text" }
-    return api.post(`/posts/${postId}/comments/`, commentData); // Removed leading /api
+    return api.post(`posts/${postId}/comments/`, commentData); // Removed leading /api
 };
 
 // Engagement related API calls
@@ -46,7 +46,7 @@ export const recordEngagement = (postId, watchTimeIncrement) => {
     }
     // If watchTimeIncrement is 0, null, or undefined, the backend treats it as a "new view" call.
     // If it's positive, it's a "watch time" update.
-    return api.post(`/posts/${postId}/record-engagement/`, payload);
+    return api.post(`posts/${postId}/record-engagement/`, payload);
 };
 
 // Example of how other specific calls might be structured:

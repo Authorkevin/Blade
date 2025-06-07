@@ -115,19 +115,18 @@ const VideoCard = ({ video, isPlaying, id }) => {
         setLikeCount(isLiked ? likeCount - 1 : likeCount + 1);
 
         try {
-            // We assume recommenderService.likeVideo(video.id) handles the toggle logic
-            // or that separate like/unlike functions would be available if needed.
-            // For this task, we'll call it once, assuming it toggles or sets the new state.
-            // If it's not a toggle, the optimistic UI will reflect a toggle,
-            // but the backend might only perform a "like" or "unlike" action.
-            await recommenderService.likeVideo(video.id);
-            // If recommenderService.likeVideo returns updated like count or status, use it here.
+            if (originalIsLiked) {
+                await recommenderService.unlikeVideo(video.id);
+            } else {
+                await recommenderService.likeVideo(video.id);
+            }
+            // If recommenderService.likeVideo/unlikeVideo returns updated like count or status, use it here.
             // For now, relying on optimistic update.
         } catch (error) {
-            alert.error("Error toggling like for video:", error);
+            console.error("Error toggling like for video:", error);
             setIsLiked(originalIsLiked); // Revert UI on error
             setLikeCount(originalLikeCount);
-            alert(`Error updating like status: ${error.message || 'Unknown error'}`);
+            console.error(`Error updating like status: ${error.message || 'Unknown error'}`);
         }
     };
 
@@ -138,11 +137,13 @@ const VideoCard = ({ video, isPlaying, id }) => {
         }
         setCommentsLoading(true);
         setCommentError('');
+        console.log('Post ID for video comments:', postIdForComments);
         try {
             const response = await getComments(postIdForComments);
+            console.log('Fetched video comments:', response.data);
             setComments(response.data || []);
         } catch (error) {
-            alert.error("Failed to fetch video comments:", error);
+            console.error("Failed to fetch video comments:", error);
             setCommentError('Failed to load comments.');
             setComments([]);
         } finally {
@@ -161,14 +162,15 @@ const VideoCard = ({ video, isPlaying, id }) => {
     const handleCommentSubmit = async (e) => {
         e.preventDefault();
         if (!newCommentText.trim() || !postIdForComments) return;
-
+        console.log('Post ID for video comments:', postIdForComments);
         try {
             const newComment = { text: newCommentText };
             const response = await addComment(postIdForComments, newComment);
+            console.log('Adding new video comment to state:', response.data);
             setComments(prevComments => [response.data, ...prevComments]);
             setNewCommentText('');
         } catch (error) {
-            alert.error("Failed to add video comment:", error);
+            console.error("Failed to add video comment:", error);
             setCommentError(`Failed to post comment: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
         }
     };
@@ -177,10 +179,10 @@ const VideoCard = ({ video, isPlaying, id }) => {
         try {
             // Use 'id' (which is video.id from props) for recommenderService calls
             await recommenderService.markAsWatched(id, 180);
-            alert(`Marked "${video.title}" as watched! Interaction sent.`);
+            console.log(`Marked "${video.title}" as watched! Interaction sent.`);
         } catch (error) {
-            alert.error("Error marking as watched:", error);
-            alert(`Error marking as watched: ${error.message || 'Unknown error'}`);
+            console.error("Error marking as watched:", error);
+            console.error(`Error marking as watched: ${error.message || 'Unknown error'}`);
         }
     };
 

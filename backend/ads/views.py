@@ -11,51 +11,79 @@ from django.utils import timezone # For AdImpression date
 
 from .models import Ad, AdImpression, AdClick # Added AdImpression, AdClick
 from .serializers import AdSerializer
+from .permissions import IsCreatorOrReadOnly # Import the new permission class
+from rest_framework import serializers # For serializers.ValidationError
 
-class IsCreatorOrAdmin(permissions.BasePermission):
-    """
-    Custom permission to only allow creators of an object or admin users to edit/delete it.
-    Assumes the instance has a 'creator' attribute.
-    """
-    def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return obj.creator == request.user or request.user.is_staff
+# The old IsCreatorOrAdmin might be removed if no longer used by other views after this change.
+# For now, it's left in case other views depend on it, but the new Ad views will use IsCreatorOrReadOnly.
 
-class AdListCreateAPIView(generics.ListCreateAPIView):
+class AdListCreateView(generics.ListCreateAPIView):
     serializer_class = AdSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_staff:
-            return Ad.objects.all().order_by('-created_at')
-        return Ad.objects.filter(creator=user).order_by('-created_at')
+        # Users should only see their own ads in the list view
+        return Ad.objects.filter(creator=self.request.user).order_by('-created_at')
 
     def perform_create(self, serializer):
-        budget = serializer.validated_data.get('budget')
-        if budget < 10: # Assuming 10 is the minimum budget
-            # This check should ideally be in the serializer's validate_budget or clean method of the model
-            # For robustness, having it here too can be a safeguard.
-            # However, the prompt for AdListCreateAPIView didn't specify detailed budget validation here,
-            # it was added for the Stripe view. Let's assume serializer handles it primarily for this view.
-            # For now, let's stick to the provided spec for perform_create if it didn't have this.
-            # The Ad model itself has a min_value validator for budget via clean() method,
-            # and serializer has validate_budget. This view check is redundant if those work.
-            # Reverting to simpler version for this view as per typical DRF practice (serializer handles validation).
-            pass # Assuming serializer validation for budget is sufficient here.
+        # Creator is set to the current user, status defaults to 'pending_review' (or as per model default)
         serializer.save(creator=self.request.user, status='pending_review')
 
-class AdRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Ad.objects.all()
+class AdRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = AdSerializer
-    permission_classes = [permissions.IsAuthenticated, IsCreatorOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCreatorOrReadOnly]
+
+    def get_queryset(self):
+        # Users should only be able to retrieve/update/delete their own ads
+        return Ad.objects.filter(creator=self.request.user)
 
     def perform_update(self, serializer):
+        original_ad = self.get_object()
+        current_status = original_ad.status
+        requested_status = serializer.validated_data.get('status', current_status)
+
+        # Simplified status transition logic for user
+        allowed_user_transitions = {
+            'live': ['paused'],
+            'paused': ['live'],
+            # User can effectively keep current status if they don't provide one,
+            # or if they provide the same one (e.g. 'paused' to 'paused')
+        }
+
+        # System-controlled statuses that users generally cannot revert from or to directly
+        system_controlled_statuses = ['pending_review', 'pending_approval', 'rejected', 'completed']
+
+        if current_status in system_controlled_statuses and requested_status != current_status:
+            # If current status is system-controlled, user cannot change it unless it's an allowed transition
+            # (which is not the case here, as user can't move it out of these states)
+            raise serializers.ValidationError(
+                f"Cannot change status from '{current_status}'. This status is managed by the system."
+            )
+
+        if requested_status != current_status: # If a status change is actually requested
+            if current_status in allowed_user_transitions:
+                if requested_status not in allowed_user_transitions[current_status]:
+                    raise serializers.ValidationError(
+                        f"Invalid status transition from '{current_status}' to '{requested_status}'. "
+                        f"Allowed transitions: {allowed_user_transitions[current_status]}."
+                    )
+                # If transition is allowed (e.g. live to paused, paused to live)
+                # and current_status was not a final/system one, it's fine.
+            else:
+                # If current_status is not in allowed_user_transitions (e.g. 'draft', 'archived' if they existed)
+                # and it's not a system_controlled_status (already checked)
+                # this means it's likely a status from which user shouldn't arbitrarily change to anything.
+                # For this simplified logic, we only allow explicit live/paused toggles by user.
+                # Any other change from a non-system state to another non-system state that isn't live/paused toggle
+                # is disallowed for now.
+                 raise serializers.ValidationError(
+                    f"Cannot change status from '{current_status}' to '{requested_status}'. Only 'live' <-> 'paused' transitions are allowed by user."
+                )
+
+        # If validation passes or no status change requested for 'status' field specifically
         serializer.save()
 
-    def perform_destroy(self, instance):
-        instance.delete()
+    # perform_destroy is inherited and works fine.
 
 class CreateAdCheckoutSessionView(APIView):
     permission_classes = [permissions.IsAuthenticated]

@@ -11,6 +11,7 @@ from django.conf import settings # To get USER_MODEL
 from django.utils import timezone
 # from ..api.models import Post # Avoid direct import if Post might import from recommender
 # Use string reference 'api.Post' for ForeignKey/OneToOneField
+from backend.nlp_utils import extract_keywords # Import the keyword extraction utility
 
 class Video(models.Model):
     """
@@ -61,6 +62,33 @@ class Video(models.Model):
         elif self.uploader:
             return f"{self.title} (by {self.uploader.username})"
         return f"{self.title} (Uploader not specified)"
+
+    def save(self, *args, **kwargs):
+        text_to_extract = ""
+        if self.title and self.title.strip():
+            text_to_extract += self.title
+        if self.description and self.description.strip():
+            if text_to_extract: # Add a space if title was also present
+                text_to_extract += " " + self.description
+            else:
+                text_to_extract += self.description
+
+        if text_to_extract:
+            extracted = extract_keywords(text_to_extract)
+            if extracted:
+                # Truncate if necessary for CharField max_length
+                max_len = Video._meta.get_field('tags').max_length
+                if len(extracted) > max_len:
+                    # Find the last comma within max_len - some buffer for "..." or just cut
+                    # For simplicity, just truncate
+                    self.tags = extracted[:max_len]
+                    # A better truncation would be to cut at the last comma before max_len
+                    # e.g., self.tags = extracted[:max_len].rsplit(',', 1)[0]
+                    # but this could also lead to issues if a single keyword is very long.
+                    # For now, direct truncation is used.
+                else:
+                    self.tags = extracted
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ['-upload_timestamp']

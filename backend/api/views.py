@@ -287,6 +287,8 @@ class RecordEngagementView(APIView):
             post_obj.view_count = F('view_count') + 1
             post_obj.save(update_fields=['view_count'])
             logger.info(f"Incremented view_count for Post {post_obj.id}.")
+            # Log keywords for this 'view' interaction
+            log_keywords_for_post_interaction(current_user, post_obj, 'view', score=0.5)
 
         post_obj.refresh_from_db()
 

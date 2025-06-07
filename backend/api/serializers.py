@@ -71,14 +71,21 @@ class PostSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
     user_id = serializers.ReadOnlyField(source='user.id') # Added user_id
     likes_count = serializers.SerializerMethodField()
+    is_liked_by_user = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
-        fields = ['id', 'user', 'user_id', 'caption', 'image', 'video', 'keywords', 'created_at', 'updated_at', 'likes_count', 'view_count', 'watch_time']
+        fields = ['id', 'user', 'user_id', 'caption', 'image', 'video', 'keywords', 'created_at', 'updated_at', 'likes_count', 'is_liked_by_user', 'view_count', 'watch_time']
         read_only_fields = ['user', 'user_id']
 
     def get_likes_count(self, obj):
         return obj.likes.count()
+
+    def get_is_liked_by_user(self, obj):
+        request_user = self.context.get('request').user
+        if request_user and request_user.is_authenticated:
+            return obj.likes.filter(user=request_user).exists()
+        return False
 
 
 class PostLikeSerializer(serializers.ModelSerializer):

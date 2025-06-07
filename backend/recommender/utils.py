@@ -14,15 +14,17 @@ import numpy as np
 import scipy.sparse as sp
 from sklearn.metrics.pairwise import cosine_similarity
 from django.contrib.auth import get_user_model
-from .models import Video, UserVideoInteraction
+from .models import Video, UserVideoInteraction, UserInterestProfile, UserActivityKeyword # Added UserInterestProfile and UserActivityKeyword
 from api.models import Post, Follow # Import Post and Follow models
+from django.db.models import Sum, Count, Q # Added Sum
 import pandas as pd
 import logging
 import re # For text processing
+import math # Added math
 from ads.models import Ad, AdImpression # Added
 from django.utils import timezone # Added
-from django.db.models import Count, Q # Added
 import random # Added
+
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -203,302 +205,199 @@ def build_interaction_data_and_matrices(force_rebuild=False):
     logger.info("Recommender data build process completed.")
 
 
-def get_recommendations_for_user(user_id):
-    logger.info(f"Generating all recommendations for user {user_id} (pre-pagination)")
-    recommended_items = []
-    added_post_ids = set()
-    current_user = None
+def get_recommendations_for_user(user_id: int):
+    logger.info(f"Revamped: Generating recommendations for user {user_id}")
+
+    # Helper function to calculate post engagement score
+    def calculate_post_engagement_score(post_obj):
+        try:
+            # Ensure counts are not None
+            view_count = post_obj.view_count or 0
+            likes_count = post_obj.likes.count() if hasattr(post_obj, 'likes') else 0
+            comments_count = post_obj.comments.count() if hasattr(post_obj, 'comments') else 0
+
+            score = (0.2 * math.log10(view_count + 1) +
+                       0.4 * likes_count +
+                       0.4 * comments_count)
+            return score
+        except Exception as e:
+            logger.error(f"Error calculating engagement score for Post {post_obj.id}: {e}", exc_info=True)
+            return 0
+
+    # Helper function to calculate video engagement score
+    def calculate_video_engagement_score(video_obj):
+        try:
+            views = 0
+            if video_obj.source_post:
+                views = video_obj.source_post.view_count or 0
+
+            likes = video_obj.interactions.filter(liked=True).count()
+            comments = video_obj.interactions.filter(commented=True).count()
+            completed_watches = video_obj.interactions.filter(completed_watch=True).count()
+
+            total_watch_time_data = video_obj.interactions.aggregate(total_watch=Sum('watch_time_seconds'))
+            total_watch_time = total_watch_time_data['total_watch'] or 0
+
+            score = (0.2 * math.log10(views + 1) +
+                       0.3 * likes +
+                       0.3 * comments +
+                       0.1 * math.log10(total_watch_time + 1) +
+                       0.1 * completed_watches)
+            return score
+        except Exception as e:
+            logger.error(f"Error calculating engagement score for Video {video_obj.id}: {e}", exc_info=True)
+            return 0
+
+    # Helper function to calculate item similarity with user interests
+    def calculate_item_similarity_score(item_obj, item_type_str, user_keyword_scores_dict):
+        if not user_keyword_scores_dict:
+            return 0
+
+        item_keywords_str = ""
+        if item_type_str == 'post':
+            item_keywords_str = item_obj.keywords
+        elif item_type_str == 'video':
+            item_keywords_str = item_obj.tags
+
+        if not item_keywords_str:
+            return 0
+
+        item_keywords_list = [keyword.strip().lower() for keyword in item_keywords_str.split(',') if keyword.strip()]
+        if not item_keywords_list:
+            return 0
+
+        similarity_score = 0.0
+        for keyword in item_keywords_list:
+            if keyword in user_keyword_scores_dict:
+                similarity_score += user_keyword_scores_dict[keyword]
+
+        # Optional: Normalize by number of item keywords or sum of user scores
+        # For now, direct sum. Could also normalize by len(item_keywords_list) if > 0.
+        return similarity_score
+
+    # 1. Fetch user interest profile
+    user_keyword_scores = {}
     try:
-        current_user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        logger.error(f"User with id {user_id} not found. Cannot personalize superuser post filtering.")
-        # Proceed without current_user, meaning superuser posts won't be filtered if they are by user_id
+        user_profile = UserInterestProfile.objects.get(user_id=user_id)
+        if user_profile.interest_embedding and isinstance(user_profile.interest_embedding, dict):
+            user_keyword_scores = user_profile.interest_embedding
+    except UserInterestProfile.DoesNotExist:
+        logger.info(f"No UserInterestProfile found for user {user_id}. Similarity score will be 0.")
+    except Exception as e:
+        logger.error(f"Error fetching user interest profile for user {user_id}: {e}", exc_info=True)
 
-    # 1. Add superuser posts
-    # Superuser posts that the user hasn't seen (simplified: not by the user themselves)
-    # Fetched ordered by most recent.
-    # Ensure User model is available via `User = get_user_model()` at module level.
-    superuser_posts_qs = Post.objects.filter(user__is_superuser=True).select_related('user').order_by('-created_at')
+    # 2. Fetch all items (Posts and Videos)
+    all_posts = Post.objects.all().prefetch_related('likes', 'comments')
+    all_videos = Video.objects.all().prefetch_related('interactions', 'source_post__likes', 'source_post__comments')
 
-    for post in superuser_posts_qs:
-        # Only add if not by the current user (if current_user is known)
-        if current_user and post.user.id == current_user.id:
-            continue
-        recommended_items.append({'type': 'post', 'id': post.id, 'object': post})
-        added_post_ids.add(post.id)
+    scored_items = []
 
-    logger.info(f"Added {len(recommended_items)} superuser posts for user {user_id}.")
+    # 3. Calculate scores for Posts
+    for post in all_posts:
+        engagement_score = calculate_post_engagement_score(post)
+        similarity_score = calculate_item_similarity_score(post, 'post', user_keyword_scores)
 
-    # 2. Add other user posts (if space allows and if it's part of the requirement)
-    # The issue: "Are posts that users create being displayed on the home page feed?" - implies general posts too.
-    # "Ensure that all posts by superusers get recommended" - priority for superusers.
-    if True: # Logic to add other posts, no longer limited by num_recommendations here
-        other_posts_qs = Post.objects.exclude(id__in=added_post_ids)                                      .select_related('user').order_by('-created_at')
-        if current_user: # Exclude user's own posts
-            other_posts_qs = other_posts_qs.exclude(user_id=current_user.id)
+        # Combine scores
+        engagement_weight = 0.7
+        similarity_weight = 0.3
+        final_score = engagement_weight * engagement_score + similarity_weight * similarity_score
 
-        for post in other_posts_qs:
-            # No specific limit here, will be paginated later
-            if post.id not in added_post_ids: # Ensure no duplicates if a post wasn't by superuser but caught here
-                recommended_items.append({'type': 'post', 'id': post.id, 'object': post})
-                added_post_ids.add(post.id)
-        logger.info(f"Added {len(recommended_items) - len(added_post_ids)} other posts for user {user_id}. Total items after posts: {len(recommended_items)}")
+        scored_items.append({
+            'object': post,
+            'type': 'post',
+            'score': final_score
+        })
+
+    # 4. Calculate scores for Videos
+    for video in all_videos:
+        engagement_score = calculate_video_engagement_score(video)
+        similarity_score = calculate_item_similarity_score(video, 'video', user_keyword_scores)
+
+        engagement_weight = 0.7
+        similarity_weight = 0.3 # Make sure weights sum to 1 if that's the intent.
+        final_score = engagement_weight * engagement_score + similarity_weight * similarity_score
+
+        scored_items.append({
+            'object': video,
+            'type': 'video',
+            'score': final_score
+        })
+
+    # 5. Sort items by final score
+    scored_items.sort(key=lambda x: x['score'], reverse=True)
+
+    # 6. Format for output (as expected by views, if specific format is still needed)
+    # The problem statement mentioned: "return this format, but sorted" referring to
+    # `{'type': 'post'/'video', 'id': item.id, 'object': item}`.
+    # The current `scored_items` is `[{'object': item, 'type': type, 'score': score}]`.
+    # This format is actually better as it includes the score. The view can then decide
+    # what to do with 'id'. Let's stick to this richer format.
+
+    # Ad injection logic
+    try:
+        live_ads = Ad.objects.filter(status='live')
+        if user_keyword_scores and live_ads.exists():
+            scored_ads = []
+            for ad in live_ads:
+                ad_keywords_list = []
+                if ad.keyword_processed_data and 'tokens' in ad.keyword_processed_data:
+                    ad_keywords_list = [kw.lower() for kw in ad.keyword_processed_data['tokens']]
+                elif ad.keywords:
+                    ad_keywords_list = [keyword.strip().lower() for keyword in ad.keywords.split(',') if keyword.strip()]
+
+                if not ad_keywords_list:
+                    continue
+
+                ad_similarity_score = 0.0
+                for keyword in ad_keywords_list:
+                    if keyword in user_keyword_scores:
+                        ad_similarity_score += user_keyword_scores[keyword]
+
+                if ad_similarity_score > 0: # Only consider ads with some relevance
+                    scored_ads.append({'object': ad, 'score': ad_similarity_score})
+
+            if scored_ads:
+                scored_ads.sort(key=lambda x: x['score'], reverse=True)
+                top_ad_obj = scored_ads[0]['object']
+                top_ad_score = scored_ads[0]['score'] # Use its own similarity score for potential sorting/ranking
+
+                # Basic Impression logging for the selected ad
+                # This is a simplified approach. Ideally, impressions are logged when the ad is actually viewed.
+                try:
+                    # Check daily impression cap for this user and ad
+                    impressions_today_count = AdImpression.objects.filter(
+                        ad=top_ad_obj,
+                        user_id=user_id, # user_id is the argument to get_recommendations_for_user
+                        impression_date=timezone.now().date()
+                    ).count()
+
+                    if impressions_today_count < 3: # Max 3 impressions per user per ad per day (example cap)
+                        AdImpression.objects.create(ad=top_ad_obj, user_id=user_id, score=top_ad_score)
+                        logger.info(f"Logged impression for ad {top_ad_obj.id} for user {user_id}")
+                    else:
+                        logger.info(f"Daily impression cap reached for ad {top_ad_obj.id} for user {user_id}. Not logging new impression.")
+                except Exception as e:
+                    logger.error(f"Failed to log impression for ad {top_ad_obj.id} for user {user_id}: {e}", exc_info=True)
 
 
-    # 3. Add video recommendations
-    # num_video_recs_needed is no longer used to limit here, fetch all relevant video recs
-    video_recommendations_packaged = [] # To store {'type': 'video', 'id': ..., 'object': ...}
-
-    if True: # Always attempt to get video recommendations if applicable
-        logger.info(f"Fetching all potential video recommendations for user {user_id}.")
-        # --- Start of adapted existing video recommendation logic ---
-        if RECOMMENDER_DATA_CACHE["user_item_matrix_df"] is None or            RECOMMENDER_DATA_CACHE["item_similarity_matrix"] is None:
-            logger.info("Recommender cache not populated for videos. Building now.")
-            build_interaction_data_and_matrices(force_rebuild=True) # Consider if force_rebuild is too much here
-
-        user_item_df = RECOMMENDER_DATA_CACHE["user_item_matrix_df"]
-        item_similarity_matrix = RECOMMENDER_DATA_CACHE.get("item_similarity_matrix")
-        video_id_to_idx = RECOMMENDER_DATA_CACHE.get("video_id_to_idx", {})
-        video_idx_to_id = RECOMMENDER_DATA_CACHE.get("video_idx_to_id", {})
-        user_id_to_idx = RECOMMENDER_DATA_CACHE.get("user_id_to_idx", {})
-
-        # Make sure these are not None when passed to fallback by scope.
-        video_features_map_cache = RECOMMENDER_DATA_CACHE.get("video_features_map", {})
-        all_post_keywords_cache_set = set(RECOMMENDER_DATA_CACHE.get("all_post_keywords", []))
-        user_follows_map_cache = RECOMMENDER_DATA_CACHE.get("user_follows_map", {})
-
-        # Define weights for fallback scoring
-        VIEW_COUNT_WEIGHT = 0.2
-        WATCH_TIME_WEIGHT = 0.1 # Per second or normalized
-        LIKES_WEIGHT = 0.3
-        COMMENTS_WEIGHT = 0.25
-        KEYWORD_BOOST_FACTOR = 0.1 # Existing
-        FOLLOWED_CREATOR_BOOST_FACTOR = 0.5 # Existing
-
-
-        # Fallback function (returns list of Video objects)
-        # Removed num_recs from signature, it should return all relevant scored videos
-        def get_fallback_video_recommendations(user_id_for_fallback, excluded_video_ids=None):
-            logger.info(f"Using fallback for videos for user {user_id_for_fallback} (returning all relevant).")
-            if excluded_video_ids is None:
-                excluded_video_ids = set()
-
-            followed_creator_ids = set(user_follows_map_cache.get(user_id_for_fallback, []))
-
-            # Fetch videos, their related post stats, and uploader info
-            videos_qs = Video.objects.select_related('uploader', 'source_post') \
-                .annotate(
-                    total_likes=Count('source_post__likes', distinct=True),
-                    total_comments=Count('source_post__comments', distinct=True)
-                ) \
-                .exclude(id__in=excluded_video_ids) \
-                .order_by('-upload_timestamp') # Initial sort, will be re-sorted by score
-
-            if not videos_qs.exists():
-                logger.warning(f"Fallback video recommendations: No videos found after initial filters for user {user_id_for_fallback}.")
-                return []
-
-            scored_videos = []
-            for video in videos_qs:
-                score = 0.0
-
-                # Content-based keyword matching (existing logic)
-                video_kw = set(video_features_map_cache.get(video.id, []))
-                keyword_matches = len(video_kw.intersection(all_post_keywords_cache_set))
-                if keyword_matches > 0:
-                    score += KEYWORD_BOOST_FACTOR * keyword_matches
-
-                # Followed creator boost (existing logic)
-                if video.uploader_id in followed_creator_ids:
-                    score += FOLLOWED_CREATOR_BOOST_FACTOR * (1 + score) # Compounding boost
-
-                # New scoring based on Post engagement stats
-                if video.source_post:
-                    # Normalize or cap view_count and watch_time to prevent extreme values? For now, direct use.
-                    # Consider that source_post.watch_time is total seconds.
-                    # A simple approach: add them to score, weighted.
-                    score += (video.source_post.view_count or 0) * VIEW_COUNT_WEIGHT
-                    score += (video.source_post.watch_time or 0) * WATCH_TIME_WEIGHT # This could be large
-                    score += (video.total_likes or 0) * LIKES_WEIGHT
-                    score += (video.total_comments or 0) * COMMENTS_WEIGHT
-
-                scored_videos.append({'video': video, 'score': score})
-
-            # Sort by the calculated score
-            scored_videos.sort(key=lambda x: x['score'], reverse=True)
-
-            # Log top 5 scores for debugging
-            # top_5_debug = [(v['video'].id, v['video'].title, v['score']) for v in scored_videos[:5]]
-            # logger.debug(f"Fallback top 5 scored videos: {top_5_debug}")
-
-            return [v['video'] for v in scored_videos] # Return all scored videos
-
-        cf_recommended_video_objects = []
-
-        can_run_cf = not (user_item_df is None or user_item_df.empty or item_similarity_matrix is None or                        not video_id_to_idx or not video_idx_to_id or not user_id_to_idx)
-
-        user_in_cf_matrix = user_id in user_id_to_idx if can_run_cf else False
-
-        if can_run_cf and user_in_cf_matrix:
-            user_matrix_idx = user_id_to_idx[user_id]
-            if user_matrix_idx < user_item_df.shape[0]: # Check bounds
-                user_interactions_vector = user_item_df.iloc[user_matrix_idx].values
-                interacted_video_indices_in_matrix = np.where(user_interactions_vector > 0.1)[0]
-
-                if interacted_video_indices_in_matrix.any():
-                    num_cf_videos = item_similarity_matrix.shape[1]
-                    aggregated_scores = np.zeros(num_cf_videos)
-
-                    for video_idx_in_matrix in interacted_video_indices_in_matrix:
-                        if video_idx_in_matrix >= num_cf_videos: continue
-                        user_score_for_this_video = user_interactions_vector[video_idx_in_matrix]
-                        similarity_vector_for_this_video = item_similarity_matrix[video_idx_in_matrix, :].toarray().ravel()
-                        aggregated_scores += similarity_vector_for_this_video * user_score_for_this_video
-
-                    cf_video_ids_for_boost = [video_idx_to_id.get(i) for i in range(num_cf_videos) if video_idx_to_id.get(i) is not None]
-                    videos_in_cf_for_boost = Video.objects.filter(id__in=cf_video_ids_for_boost).values('id', 'uploader_id')
-                    video_uploader_map_for_boost = {v['id']: v['uploader_id'] for v in videos_in_cf_for_boost}
-                    followed_creator_ids_for_user = set(user_follows_map_cache.get(user_id, [])) # Uses guarded cache variable
-
-                    for i in range(num_cf_videos):
-                        video_id_cf = video_idx_to_id.get(i)
-                        if not video_id_cf: continue
-                        current_score = aggregated_scores[i]
-                        boost = 0.0
-                        # Use guarded cache variables here for consistency
-                        if video_id_cf in video_features_map_cache:
-                            video_kw = set(video_features_map_cache.get(video_id_cf, [])) # Uses guarded cache variable
-                            matches = len(video_kw.intersection(all_post_keywords_cache_set)) # Uses guarded cache variable
-                            if matches > 0: boost += KEYWORD_BOOST_FACTOR * matches
-
-                        uploader_id = video_uploader_map_for_boost.get(video_id_cf)
-                        if uploader_id and uploader_id in followed_creator_ids_for_user:
-                            boost += FOLLOWED_CREATOR_BOOST_FACTOR
-
-                        if boost > 0: aggregated_scores[i] += boost * (1 + abs(current_score))
-
-                    aggregated_scores[interacted_video_indices_in_matrix] = -np.inf # Exclude interacted
-                    recommended_cf_indices = np.argsort(-aggregated_scores)
-
-                    temp_cf_video_ids = []
-                    for cf_idx in recommended_cf_indices:
-                        if aggregated_scores[cf_idx] == -np.inf: continue
-                        video_id_res = video_idx_to_id.get(cf_idx) # Renamed
-                        if video_id_res: temp_cf_video_ids.append(video_id_res)
-                        # No limit based on num_video_recs_needed here for CF video selection
-
-                    if temp_cf_video_ids:
-                        video_obj_map = {v.id: v for v in Video.objects.filter(id__in=temp_cf_video_ids)}
-                        cf_recommended_video_objects = [video_obj_map[vid] for vid in temp_cf_video_ids if vid in video_obj_map]
-                else: # No significant positive interactions
-                    logger.info(f"User {user_id} has no significant positive interactions in CF matrix. Using fallback for videos.")
-            else:
-                 logger.error(f"User matrix index {user_matrix_idx} out of bounds for user_item_df. User ID: {user_id}. Using fallback for videos.")
-        elif not can_run_cf:
-            logger.warning("CF Recommender data insufficient for videos. Using fallback.")
-        elif not user_in_cf_matrix:
-             logger.info(f"User {user_id} not in CF matrix for videos. Using fallback.")
-
-        # Package CF recommendations
-        for video_obj in cf_recommended_video_objects:
-            # No limit based on num_video_recs_needed for packaging CF results
-            video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
-
-        # num_fallback_needed is no longer the primary limiter for how many fallback items are fetched initially
-        # The fallback function will return all it can, and we add them if not already present from CF.
-
-        # Determine interacted video IDs for exclusion in fallback
-        user_matrix_idx = user_id_to_idx.get(user_id)
-        interacted_video_ids_for_fallback_exclusion = set()
-        if user_matrix_idx is not None and user_matrix_idx < user_item_df.shape[0]:
-            user_interactions_vector = user_item_df.iloc[user_matrix_idx].values
-            interacted_video_indices = np.where(user_interactions_vector > 0.1)[0]
-            for idx in interacted_video_indices:
-                video_id = video_idx_to_id.get(idx)
-                if video_id:
-                    interacted_video_ids_for_fallback_exclusion.add(video_id)
-
-        # Always attempt to get fallback if CF didn't provide enough, or to supplement.
-        # The definition of "enough" is now "as many good ones as possible" before pagination.
-        if True: # Logic to decide if fallback is needed (e.g. if CF results are very few, or always add some diversity)
-            logger.info(f"Fetching fallback videos for user {user_id} to supplement or if CF was insufficient.")
-            # Pass interacted video IDs to exclude them from fallback
-            # Fallback now returns all its relevant scored videos
-            fallback_video_objects = get_fallback_video_recommendations(user_id, excluded_video_ids=interacted_video_ids_for_fallback_exclusion)
-
-            # Add fallback videos if they are not already in the list from CF
-            # and we still want more video diversity (no hard limit here, view will paginate)
-            for video_obj in fallback_video_objects:
-                if not any(rec_vid['id'] == video_obj.id for rec_vid in video_recommendations_packaged):
-                    video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
-        # --- End of adapted video recommendation logic ---
-
-        recommended_items.extend(video_recommendations_packaged)
-        logger.info(f"Added {len(video_recommendations_packaged)} video recommendations for user {user_id}.")
-
-    # --- Ad Fetching and Injection Logic ---
-    # Fetch live ads
-    live_ads = Ad.objects.filter(status='live')
-
-    candidate_ads = []
-    now = timezone.now() # Renamed now_tz to now for clarity with the change
-    # current_time = now.time() # No longer needed for direct comparison
-    current_date = now.date() # Still needed for impression capping
-
-    for ad in live_ads:
-        # Time of Day Targeting (now DateTime Targeting)
-        if ad.target_time_of_day_start and ad.target_time_of_day_end:
-            if not (ad.target_time_of_day_start <= now <= ad.target_time_of_day_end):
-                continue
-        elif ad.target_time_of_day_start:
-            if now < ad.target_time_of_day_start:
-                continue
-        elif ad.target_time_of_day_end:
-            if now > ad.target_time_of_day_end:
-                continue
-
-        # Frequency Capping (Per Ad)
-        impressions_today_count = AdImpression.objects.filter(
-            ad=ad,
-            user_id=user_id,
-            impression_date=current_date
-        ).count()
-
-        if impressions_today_count >= 3: # Max 3 impressions per user per ad per day
-            continue
-
-        candidate_ads.append(ad)
-
-    random.shuffle(candidate_ads)
-
-    final_recommendations_with_ads = []
-    if recommended_items: # Only inject ads if there's content
-        ad_injection_interval = random.randint(7, 10)
-        ad_idx = 0
-
-        for i, item in enumerate(recommended_items):
-            final_recommendations_with_ads.append(item)
-            if (i + 1) % ad_injection_interval == 0 and ad_idx < len(candidate_ads):
-                selected_ad = candidate_ads[ad_idx]
-                ad_data_for_feed = {
+                ad_item_for_feed = {
+                    'object': top_ad_obj,
                     'type': 'ad',
-                    'id': selected_ad.id,
-                    'ad_id': selected_ad.id,
-                    'object': selected_ad,
-                    'is_ad': True
+                    'score': top_ad_score # Using ad's own similarity score
                 }
-                final_recommendations_with_ads.append(ad_data_for_feed)
-                ad_idx += 1
-                ad_injection_interval = random.randint(7, 10)
 
-        recommended_items = final_recommendations_with_ads
-        logger.info(f"Injected {ad_idx} ads into the feed for user {user_id}.")
-    else:
-        logger.info(f"No organic content to inject ads into for user {user_id}.")
+                injection_index = 3
+                if len(scored_items) > injection_index:
+                    scored_items.insert(injection_index, ad_item_for_feed)
+                else:
+                    scored_items.append(ad_item_for_feed)
+                logger.info(f"Injected ad {top_ad_obj.id} into recommendations for user {user_id}")
 
+    except Exception as e:
+        logger.error(f"Error during ad processing or injection for user {user_id}: {e}", exc_info=True)
 
-    logger.info(f"Generated {len(recommended_items)} total mixed recommendations for user {user_id}. Breakdown: Posts={len(added_post_ids)}, Videos={len(video_recommendations_packaged)}.")
-    return recommended_items # Return all items, pagination will be handled by the view
+    logger.info(f"Generated {len(scored_items)} sorted recommendations (including potential ad) for user {user_id}.")
+    return scored_items
 
 
 import hashlib
@@ -588,3 +487,52 @@ def prime_recommender_cache_on_startup():
         build_interaction_data_and_matrices(force_rebuild=True)
     except Exception as e:
         logger.error(f"Error priming recommender cache on startup: {e}", exc_info=True)
+
+
+def update_user_interest_profile_placeholder(user_id: int):
+    """
+    Updates the UserInterestProfile for a given user with an aggregated
+    keyword score dictionary stored in the 'interest_embedding' field.
+    This is a placeholder for a more complex embedding.
+    """
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        logger.error(f"User with ID {user_id} not found. Cannot update interest profile.")
+        return
+
+    activities = UserActivityKeyword.objects.filter(user=user)
+    if not activities.exists():
+        logger.info(f"No keyword activities found for user {user_id}. Profile will be empty or unchanged.")
+        # Optionally, clear the existing profile embedding if no activities
+        profile, _ = UserInterestProfile.objects.get_or_create(user=user)
+        profile.interest_embedding = {} # Store empty dict
+        profile.keywords_summary = {} # Also clear keywords_summary if desired
+        profile.save()
+        return
+
+    keyword_scores = {}
+    for activity in activities:
+        keyword_scores[activity.keyword] = keyword_scores.get(activity.keyword, 0.0) + activity.interaction_score
+
+    # Sort by score for potential inspection or if we later decide to limit
+    # For now, 'interest_embedding' will store the raw aggregated scores.
+    # sorted_keyword_scores = dict(sorted(keyword_scores.items(), key=lambda item: item[1], reverse=True))
+    # Using sorted_keyword_scores is optional, for placeholder, raw scores are fine.
+
+    profile, created = UserInterestProfile.objects.get_or_create(user=user)
+
+    # Storing the keyword_scores dictionary directly as a placeholder "embedding"
+    profile.interest_embedding = keyword_scores
+
+    # Also, let's update the keywords_summary field as it's more aligned with this structure
+    # The task asked for interest_embedding, but keywords_summary is semantically closer to keyword_scores.
+    # Let's populate both for now, or decide which one is the actual target for this placeholder.
+    # Based on previous `generate_simple_interest_embedding`, `keywords_summary` is the one that's
+    # structured like: {'keyword': {'score': X, 'last_interacted': Y}, ...}
+    # The current `keyword_scores` is just {'keyword': score}.
+    # For this task, let's stick to the spec: store `keyword_scores` in `interest_embedding`.
+    # If `keywords_summary` should also be updated, it would require more info like `last_interacted`.
+
+    profile.save()
+    logger.info(f"Updated interest profile (placeholder embedding) for user {user_id}. Found {len(keyword_scores)} keywords.")

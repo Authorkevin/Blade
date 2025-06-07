@@ -8,6 +8,7 @@ class VideoSerializer(serializers.ModelSerializer):
     uploader_username = serializers.ReadOnlyField(source='uploader.username')
     video_url = serializers.SerializerMethodField() # New field
     is_liked_by_user = serializers.SerializerMethodField() # Field for user like status
+    likes_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Video
@@ -17,9 +18,13 @@ class VideoSerializer(serializers.ModelSerializer):
             'duration_seconds',
             'video_url', # Added to fields
             'is_liked_by_user', # Added to fields
+            'likes_count', # Added likes_count
             'source_post', # Added source_post ID
         ]
         read_only_fields = ['uploader']
+
+    def get_likes_count(self, obj):
+        return obj.interactions.filter(liked=True).count()
 
     def get_video_url(self, obj):
         request = self.context.get('request')

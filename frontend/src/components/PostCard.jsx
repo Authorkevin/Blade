@@ -114,7 +114,7 @@ const PostCard = ({ post, id, isPlaying }) => { // Add id and isPlaying props
             // For now, optimistic update is fine.
         } catch (error) {
             console.error("Failed to update like status for post ID:", post.id, error);
-            alert(`Error updating like status: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
+            console.error(`Error updating like status: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
             setIsLiked(originalLiked);
             setLikeCount(originalLikeCount);
         }
@@ -124,11 +124,13 @@ const PostCard = ({ post, id, isPlaying }) => { // Add id and isPlaying props
         if (!post || !post.id) return;
         setCommentsLoading(true);
         setCommentError('');
+        console.log('Post ID for comments:', post.id);
         try {
             const response = await getComments(post.id);
+            console.log('Fetched comments:', response.data);
             setComments(response.data || []); // Assuming response.data is the array of comments
         } catch (error) {
-            alert.error("Failed to fetch comments:", error);
+            console.error("Failed to fetch comments:", error);
             setCommentError('Failed to load comments.');
             setComments([]);
         } finally {
@@ -150,16 +152,18 @@ const PostCard = ({ post, id, isPlaying }) => { // Add id and isPlaying props
             setCommentError("Comment text cannot be empty and post ID must be valid."); // Clarified error
             return;
         }
-        alert(`Submitting comment for post ID: ${post.id}`); // Log the postId
+        console.log('Post ID for comments:', post.id);
+        console.log(`Submitting comment for post ID: ${post.id}`); // Log the postId
         // Removed the erroneous block that referenced postIdForComments
         try {
             const newComment = { text: newCommentText };
             const response = await addComment(post.id, newComment);
+            console.log('Adding new comment to state:', response.data);
             setComments(prevComments => [response.data, ...prevComments]); // Add new comment to the top
             setNewCommentText(''); // Clear input field
             // Optionally, keep comments section open or close it
         } catch (error) {
-            alert.error("Failed to add comment:", error);
+            console.error("Failed to add comment:", error);
             setCommentError(`Failed to post comment: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
             // alert(`Failed to post comment: ${error.response?.data?.detail || 'Please try again.'}`);
         }

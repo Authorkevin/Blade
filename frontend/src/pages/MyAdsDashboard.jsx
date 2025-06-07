@@ -15,7 +15,7 @@ const MyAdsDashboard = () => {
             setError('');
             try {
                 // No need to manually pass token if 'api.js' handles it via interceptors
-                const response = await adService.getMyAds();
+                const response = await adService.listMyAds(); // Changed to listMyAds
                 setAds(response.data); // Assuming response.data is the array of ads
             } catch (err) {
                 console.error("Failed to fetch user ads:", err);
@@ -68,7 +68,8 @@ const MyAdsDashboard = () => {
 
     const handleUpdateAdStatus = async (adId, newStatus) => {
         try {
-            const response = await adService.updateAdStatus(adId, newStatus);
+            // Corrected to use updateAd with a payload object
+            const response = await adService.updateAd(adId, { status: newStatus });
             setAds(prevAds => prevAds.map(ad => ad.id === adId ? { ...ad, status: response.data.status } : ad));
             setActionMessage({ text: `Ad status updated to ${statusDisplayMap[newStatus] || newStatus}.`, type: 'success' });
         } catch (err) {
@@ -89,7 +90,10 @@ const MyAdsDashboard = () => {
 
     return (
         <div style={styles.pageContainer}>
-            <h2 style={styles.heading}>My Ad Campaigns</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 style={styles.heading}>My Ad Campaigns</h2>
+                <Link to="/ads/new" style={styles.actionButton}>Create New Ad</Link> {/* Added Create New Ad button */}
+            </div>
 
             {actionMessage.text && (
                 <div style={actionMessage.type === 'success' ? styles.successMessage : styles.errorMessage}>
@@ -161,6 +165,14 @@ const MyAdsDashboard = () => {
                                                 style={{...styles.actionButton, ...styles.deleteButton}}>
                                                 Delete
                                             </button>
+                                        )}
+                                        {/* Add Pay button if status is pending_review */}
+                                        {ad.status === 'pending_review' && (
+                                            <Link
+                                                to={`/ads/pay/${ad.id}`} // Assuming a route like this for payment
+                                                style={{...styles.actionButton, ...styles.payButton /* Add payButton style */}}>
+                                                Pay & Submit
+                                            </Link>
                                         )}
                                     </td>
                                 </tr>

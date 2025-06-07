@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from backend.nlp_utils import extract_keywords # Import the keyword extraction utility
 
 class Product(models.Model):
     PRODUCT_TYPE_CHOICES = [
@@ -36,6 +37,14 @@ class Post(models.Model):
     watch_time = models.FloatField(default=0.0, help_text="Total watch time in seconds")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if self.caption and self.caption.strip():
+            extracted = extract_keywords(self.caption)
+            if extracted:
+                self.keywords = extracted
+        # If caption is empty or no keywords extracted, keywords field remains as is or empty.
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Post by {self.user.username} at {self.created_at.strftime('%Y-%m-%d %H:%M')}"

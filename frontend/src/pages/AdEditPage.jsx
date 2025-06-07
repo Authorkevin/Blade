@@ -83,57 +83,69 @@ const styles = {
 const AdEditPage = () => {
     const { adId } = useParams();
     const navigate = useNavigate();
+    const isCreating = !adId;
 
     const [adData, setAdData] = useState({
         ad_title: '',
         target_url: '',
         ad_copy: '',
-        keywords: '', // Assuming keywords are a comma-separated string
-        budget: '', // Assuming budget is a number
+        keywords: '',
+        budget: '',
         target_age_min: '',
         target_age_max: '',
-        target_gender: '', // e.g., 'any', 'male', 'female'
-        target_locations: '', // Assuming comma-separated string
-        // media_file is excluded for basic edit
+        target_gender: 'any',
+        target_locations: '',
+        media_type: 'image', // Default media type
+        media_file: null,
+        button_text: 'learn_more', // Default button text
     });
-    const [originalAdData, setOriginalAdData] = useState({});
+    const [originalAdData, setOriginalAdData] = useState({}); // Still useful for "Edit" title
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
 
     useEffect(() => {
-        const fetchAd = async () => {
-            setIsLoading(true);
-            setMessage({ type: '', text: '' });
-            try {
-                const data = await adService.getAdDetails(adId);
-                const fetchedData = {
-                    ad_title: data.ad_title || '',
-                    target_url: data.target_url || '',
-                    ad_copy: data.ad_copy || '',
-                    keywords: Array.isArray(data.keywords) ? data.keywords.join(', ') : (data.keywords || ''),
-                    budget: data.budget || '',
-                    target_age_min: data.target_age_min || '',
-                    target_age_max: data.target_age_max || '',
-                    target_gender: data.target_gender || 'any',
-                    target_locations: Array.isArray(data.target_locations) ? data.target_locations.join(', ') : (data.target_locations || ''),
-                };
-                setAdData(fetchedData);
-                setOriginalAdData(fetchedData);
-            } catch (error) {
-                console.error("Failed to fetch ad details:", error);
-                setMessage({ type: 'error', text: 'Failed to load ad details. Please try again.' });
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        if (adId) {
+        if (!isCreating) { // Only fetch if adId is present (editing mode)
+            const fetchAd = async () => {
+                setIsLoading(true);
+                setMessage({ type: '', text: '' });
+                try {
+                    const data = await adService.getAdDetails(adId);
+                    const fetchedData = {
+                        ad_title: data.ad_title || '',
+                        target_url: data.target_url || '',
+                        ad_copy: data.ad_copy || '',
+                        keywords: Array.isArray(data.keywords) ? data.keywords.join(', ') : (data.keywords || ''),
+                        budget: data.budget || '',
+                        target_age_min: data.target_age_min || '',
+                        target_age_max: data.target_age_max || '',
+                        target_gender: data.target_gender || 'any',
+                        target_locations: Array.isArray(data.target_locations) ? data.target_locations.join(', ') : (data.target_locations || ''),
+                        media_type: data.media_type || 'image',
+                        button_text: data.button_text || 'learn_more',
+                        // media_file is not fetched, only set on new upload
+                        media_file: null,
+                    };
+                    setAdData(fetchedData);
+                    setOriginalAdData(fetchedData); // For displaying title in edit mode
+                } catch (error) {
+                    console.error("Failed to fetch ad details:", error);
+                    setMessage({ type: 'error', text: 'Failed to load ad details. Please try again.' });
+                } finally {
+                    setIsLoading(false);
+                }
+            };
             fetchAd();
         }
-    }, [adId]);
+        // If isCreating, we use the initial empty/default state for adData
+    }, [adId, isCreating]);
 
     const handleChange = (e) => {
-        const { name, value } = e.target;
-        setAdData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type, files } = e.target;
+        if (type === 'file') {
+            setAdData(prev => ({ ...prev, [name]: files[0] }));
+        } else {
+            setAdData(prev => ({ ...prev, [name]: value }));
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -141,46 +153,66 @@ const AdEditPage = () => {
         setIsLoading(true);
         setMessage({ type: '', text: '' });
 
-        // For simplicity, sending all editable fields.
-        // A more robust version would send only changed fields.
-        const payload = {
-            ...adData,
-            // Convert budget to number if it's not empty
-            budget: adData.budget !== '' ? Number(adData.budget) : null,
-            target_age_min: adData.target_age_min !== '' ? Number(adData.target_age_min) : null,
-            target_age_max: adData.target_age_max !== '' ? Number(adData.target_age_max) : null,
-            keywords: adData.keywords.split(',').map(kw => kw.trim()).filter(kw => kw),
-            target_locations: adData.target_locations.split(',').map(loc => loc.trim()).filter(loc => loc),
-        };
+        // Prepare payload, which might be FormData if media_file is present
+        // The adService createAd and updateAd functions will handle FormData creation.
+        const payload = { ...adData };
 
-        // Remove fields that backend might not expect or are empty in a way that's problematic
-        if (payload.budget === null) delete payload.budget;
-        if (payload.target_age_min === null) delete payload.target_age_min;
-        if (payload.target_age_max === null) delete payload.target_age_max;
+        // Convert budget and ages to numbers if they are not empty, otherwise null
+        payload.budget = payload.budget !== '' ? Number(payload.budget) : null;
+        payload.target_age_min = payload.target_age_min !== '' ? Number(payload.target_age_min) : null;
+        payload.target_age_max = payload.target_age_max !== '' ? Number(payload.target_age_max) : null;
 
+        // Keywords and locations can be sent as comma-separated strings; backend will handle parsing if needed
+        // Or, if backend expects arrays for these, ensure adService or backend serializer handles string to array.
+        // The AdSerializer in backend seems to expect string for keywords.
 
         try {
-            await adService.updateAd(adId, payload);
-            setMessage({ type: 'success', text: 'Ad updated successfully! Redirecting...' });
+            if (isCreating) {
+                // Ensure media_file is present for creation as per AdSerializer validation
+                if (!payload.media_file) {
+                    setMessage({ type: 'error', text: 'Media file is required to create an ad.' });
+                    setIsLoading(false);
+                    return;
+                }
+                await adService.createAd(payload);
+                setMessage({ type: 'success', text: 'Ad created successfully! Redirecting...' });
+            } else {
+                // For update, if media_file is null, we don't want to send it,
+                // so backend doesn't try to clear it or process a null file.
+                if (payload.media_file === null) {
+                    delete payload.media_file;
+                }
+                await adService.updateAd(adId, payload);
+                setMessage({ type: 'success', text: 'Ad updated successfully! Redirecting...' });
+            }
+
             setTimeout(() => {
-                navigate('/ad-center'); // Or wherever MyAdsDashboard is
+                navigate('/my-ads'); // Navigate to MyAdsDashboard
             }, 2000);
         } catch (error) {
-            console.error("Failed to update ad:", error);
-            const errorMsg = error.response?.data?.detail || error.message || 'Failed to update ad. Please try again.';
-            setMessage({ type: 'error', text: errorMsg });
+            console.error(`Failed to ${isCreating ? 'create' : 'update'} ad:`, error);
+            const errorMsg = error.response?.data?.detail || error.message || `Failed to ${isCreating ? 'create' : 'update'} ad. Please try again.`;
+            let formattedErrorMsg = errorMsg;
+            if (typeof error.response?.data === 'object' && error.response.data !== null) {
+                // Try to format DRF validation errors
+                const errors = Object.entries(error.response.data).map(([key, value]) => {
+                    return `${key}: ${Array.isArray(value) ? value.join(', ') : value}`;
+                }).join('; ');
+                if (errors) formattedErrorMsg = errors;
+            }
+            setMessage({ type: 'error', text: formattedErrorMsg });
         } finally {
             setIsLoading(false);
         }
     };
 
-    if (isLoading && !adData.ad_title) { // Show full page loading only on initial load
+    if (isLoading && !isCreating && !originalAdData.ad_title) { // Show full page loading only on initial edit load
         return <div style={styles.loading}>Loading ad details...</div>;
     }
 
     return (
         <div style={styles.container}>
-            <h2>Edit Ad: {originalAdData.ad_title || `ID ${adId}`}</h2>
+            <h2>{isCreating ? 'Create New Ad' : `Edit Ad: ${originalAdData.ad_title || `ID ${adId}`}`}</h2>
             {message.text && (
                 <div style={{ ...styles.message, ...(message.type === 'success' ? styles.successMessage : styles.errorMessage) }}>
                     {message.text}
@@ -204,8 +236,30 @@ const AdEditPage = () => {
                     <input type="text" name="keywords" id="keywords" value={adData.keywords} onChange={handleChange} style={styles.input} />
                 </div>
                 <div style={styles.formGroup}>
+                    <label htmlFor="media_type" style={styles.label}>Media Type</label>
+                    <select name="media_type" id="media_type" value={adData.media_type} onChange={handleChange} style={styles.input}>
+                        <option value="image">Image</option>
+                        <option value="video">Video</option>
+                    </select>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="media_file" style={styles.label}>Media File</label>
+                    <input type="file" name="media_file" id="media_file" onChange={handleChange} style={styles.input} accept={adData.media_type === 'image' ? 'image/*' : 'video/*'} />
+                    {/* Display existing media file info if editing and file not changed? For now, new upload replaces. */}
+                </div>
+                 <div style={styles.formGroup}>
+                    <label htmlFor="button_text" style={styles.label}>Button Text</label>
+                    <select name="button_text" id="button_text" value={adData.button_text} onChange={handleChange} style={styles.input}>
+                        <option value="learn_more">Learn More</option>
+                        <option value="shop_now">Shop Now</option>
+                        <option value="sign_up">Sign Up</option>
+                        <option value="download">Download</option>
+                        <option value="watch_video">Watch Video</option>
+                    </select>
+                </div>
+                <div style={styles.formGroup}>
                     <label htmlFor="budget" style={styles.label}>Budget (USD)</label>
-                    <input type="number" name="budget" id="budget" value={adData.budget} onChange={handleChange} style={styles.input} step="0.01" min="0" />
+                    <input type="number" name="budget" id="budget" value={adData.budget} onChange={handleChange} style={styles.input} step="0.01" min="10" required /> {/* Min budget from serializer */}
                 </div>
 
                 <h3 style={{marginTop: '20px', borderTop: '1px solid #444', paddingTop: '20px'}}>Targeting Options</h3>
@@ -233,9 +287,9 @@ const AdEditPage = () => {
 
                 <div>
                     <button type="submit" disabled={isLoading} style={styles.button}>
-                        {isLoading ? 'Saving...' : 'Save Changes'}
+                        {isLoading ? (isCreating ? 'Creating...' : 'Saving...') : (isCreating ? 'Create Ad & Proceed to Payment' : 'Save Changes')}
                     </button>
-                    <button type="button" onClick={() => navigate('/ad-center')} style={{...styles.button, ...styles.cancelButton, marginLeft: '10px'}} disabled={isLoading}>
+                    <button type="button" onClick={() => navigate('/my-ads')} style={{...styles.button, ...styles.cancelButton, marginLeft: '10px'}} disabled={isLoading}>
                         Cancel
                     </button>
                 </div>

@@ -37,11 +37,16 @@ function App() {
         <Route path="/profile/:userId/store" element={<ErrorBoundary><MainLayout><ProfileStore /></MainLayout></ErrorBoundary>} />
         <Route path="/your-store" element={<ProtectedRoute><MainLayout><ProfileStoreEdit /></MainLayout></ProtectedRoute>} />
         <Route path="/create-post" element={<ProtectedRoute><MainLayout><CreatePost /></MainLayout></ProtectedRoute>} />
+
+        {/* Ad Management Routes */}
+        <Route path="/my-ads" element={<ProtectedRoute><MainLayout><MyAdsDashboard /></MainLayout></ProtectedRoute>} />
+        <Route path="/ads/new" element={<ProtectedRoute><MainLayout><AdEditPage /></MainLayout></ProtectedRoute>} />
+        <Route path="/ads/edit/:adId" element={<ProtectedRoute><MainLayout><AdEditPage /></MainLayout></ProtectedRoute>} />
+
+        {/* Routes related to AdCenter and Payments - can be reviewed if AdCenter is deprecated by MyAdsDashboard */}
         <Route path="/ad-center" element={<ProtectedRoute><MainLayout><AdCenter /></MainLayout></ProtectedRoute>} />
-        <Route path="/ad-dashboard" element={<ProtectedRoute><MainLayout><MyAdsDashboard /></MainLayout></ProtectedRoute>} />
         <Route path="/ad-payment-success" element={<ProtectedRoute><MainLayout><AdPaymentSuccess /></MainLayout></ProtectedRoute>} />
         <Route path="/ad-payment-cancel" element={<ProtectedRoute><MainLayout><AdPaymentCancel /></MainLayout></ProtectedRoute>} />
-        <Route path="/ads/:adId/edit" element={<ProtectedRoute><MainLayout><AdEditPage /></MainLayout></ProtectedRoute>} /> {/* New route for editing ads */}
       </Routes>
     </BrowserRouter>
   );

@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
-    AdListCreateAPIView,
-    AdRetrieveUpdateDestroyAPIView,
+    AdListCreateView, # Renamed
+    AdRetrieveUpdateDestroyView, # Renamed
     CreateAdCheckoutSessionView,
     StripeWebhookView,
     VerifyAdPaymentView,
@@ -11,9 +11,9 @@ from .views import (
 )
 
 urlpatterns = [
-    path('', AdListCreateAPIView.as_view(), name='ad-list-create'),
+    path('', AdListCreateView.as_view(), name='ad-list-create'), # Renamed view
     path('estimate-budget/', AdBudgetEstimateAPIView.as_view(), name='ad-budget-estimate'), # Added new path
-    path('<int:pk>/', AdRetrieveUpdateDestroyAPIView.as_view(), name='ad-detail'),
+    path('<int:pk>/', AdRetrieveUpdateDestroyView.as_view(), name='ad-detail'), # Renamed view
     path('<int:ad_id>/create-checkout-session/', CreateAdCheckoutSessionView.as_view(), name='ad-create-checkout-session'),
     path('<int:ad_id>/track-impression/', TrackAdImpressionAPIView.as_view(), name='ad-track-impression'), # New path
     path('<int:ad_id>/track-click/', TrackAdClickAPIView.as_view(), name='ad-track-click'), # New path
