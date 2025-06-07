@@ -149,3 +149,92 @@ class UserVideoInteraction(models.Model):
         # For now, it can be 0 if only minor watch time and no other signals.
         # A base score for any interaction existing could be added if desired e.g. score = max(score, 0.5)
         return score
+
+class UserActivityKeyword(models.Model):
+    """
+    Tracks user interactions related to specific keywords, derived from posts or videos.
+    This helps in understanding user interest in topics/keywords.
+    """
+    INTERACTION_CHOICES = [
+        ('like', 'Like'),
+        ('comment', 'Comment'),
+        ('view', 'View'),    # e.g., viewed a post/video with this keyword
+        ('watch', 'Watch'),  # e.g., significant watch time for a video with this keyword
+        ('search', 'Search'), # If keyword search functionality exists
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='keyword_activities'
+    )
+    keyword = models.CharField(max_length=100, db_index=True)
+
+    # Source of the keyword interaction
+    source_post = models.ForeignKey(
+        'api.Post',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='keyword_interactions'
+    )
+    source_video = models.ForeignKey(
+        'Video',  # Refers to recommender.Video model in this app
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='keyword_interactions'
+    )
+
+    interaction_type = models.CharField(
+        max_length=20,
+        choices=INTERACTION_CHOICES
+    )
+    interaction_score = models.FloatField(default=1.0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        source_info = ""
+        if self.source_post:
+            source_info = f" (Post ID: {self.source_post.id})"
+        elif self.source_video:
+            source_info = f" (Video ID: {self.source_video.id})"
+        return f"{self.user.username} - '{self.keyword}' ({self.interaction_type}){source_info}"
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "User Keyword Activity"
+        verbose_name_plural = "User Keyword Activities"
+
+class UserInterestProfile(models.Model):
+    """
+    Stores a summarized interest profile for a user, typically based on keywords.
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='interest_profile'
+    )
+    # Example: {'python': {'score': 10.5, 'last_interacted': '2023-01-15T10:00:00Z'}, ...}
+    keywords_summary = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Summary of user's keyword interests, e.g., scores, timestamps."
+    )
+    interest_embedding = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Placeholder for user interest embedding vector."
+    )
+    last_updated = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp when this profile was last updated."
+    )
+
+    def __str__(self):
+        return f"{self.user.username}'s Interest Profile"
+
+    class Meta:
+        ordering = ['-last_updated']
+        verbose_name = "User Interest Profile"
+        verbose_name_plural = "User Interest Profiles"

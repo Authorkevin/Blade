@@ -151,7 +151,7 @@ const MainLayout = ({ children }) => {
     return (
         <div style={layoutStyle}>
             <header style={headerStyle}>
-                <img src="logo.svg" style={appTitleStyle} width="55" height="55" alt="Sync logo" />
+                <a href="/"><img src="logo.svg" style={appTitleStyle} width="55" height="55" alt="Sync logo" /></a>
 
             </header>
             <main style={contentStyle}>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react'; // Added useCallback
 import recommenderService from '../services/recommenderService';
 import { recordEngagement } from '../api'; // Import recordEngagement
 import VideoCard from '../components/VideoCard';
@@ -12,15 +12,55 @@ const HomePage = () => {
     const [recommendations, setRecommendations] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
-    const [activeVideoId, setActiveVideoId] = useState(null);
     const feedContainerRef = useRef(null);
+    const [activeVideoId, setActiveVideoId] = useState(null);
+    const centerColumnRef = useRef(null); // Added for three-column layout scroll
 
-    // Refs to manage timeouts and intervals and previous active video
+    // State for infinite scrolling
+    const [currentPage, setCurrentPage] = useState(1);
+    const [hasNextPage, setHasNextPage] = useState(true);
+    const [isFetchingMore, setIsFetchingMore] = useState(false);
+    const [fetchMoreError, setFetchMoreError] = useState('');
+
+    // Refs for engagement tracking
     const activeVideoStartTimeRef = useRef(0);
     const watchTimeIntervalIdRef = useRef(null);
     const viewCountTimeoutIdRef = useRef(null);
     const prevActiveVideoIdRef = useRef(null);
 
+    useEffect(() => {
+        const fetchInitialRecommendations = async () => { // Renamed to fetchInitialRecommendations for clarity
+            // console.log('Minimal: Fetching initial recommendations...'); // Optional: for user's local debugging
+            setIsLoading(true);
+            setError('');
+            try {
+                const response = await recommenderService.getRecommendations({ page: 1 });
+                // console.log('Minimal: Service responded. Full response:', response); // Optional
+
+                if (response && response.results) {
+                    // console.log('Minimal: response.results is an array of length:', response.results.length); // Optional
+                    setRecommendations(response.results);
+                    setHasNextPage(response.next !== null); // Set hasNextPage from initial fetch
+                    setCurrentPage(1); // Set current page for initial fetch
+                } else {
+                    // console.log('Minimal: response or response.results is missing/empty.'); // Optional
+                    setRecommendations([]); // Ensure it's an empty array if data is not as expected
+                    setHasNextPage(false); // No next page if data is invalid
+                    // setError('Failed to load recommendations: Invalid data structure.'); // Optionally set error
+                }
+            } catch (err) {
+                // console.error('Minimal: Error caught fetching recommendations:', err); // Optional
+                setError(err.message || 'Something went wrong while fetching recommendations.');
+                setRecommendations([]);
+                setHasNextPage(false); // No next page on error
+            } finally {
+                setIsLoading(false);
+                // console.log('Minimal: Fetch finally block. isLoading is now false.'); // Optional
+            }
+        };
+
+        fetchInitialRecommendations();
+    }, []); // Empty dependency array to run once on mount
 
     // Debounce function
     const debounce = (func, delay) => {
@@ -32,278 +72,376 @@ const HomePage = () => {
     };
 
     const handleScroll = useCallback(() => {
+        // Adapted for centerColumnRef scrolling
+        if (!centerColumnRef.current || !feedContainerRef.current) return;
+
         let newActiveVideoId = null;
         let minDistanceToCenter = Infinity;
 
-        // Query for video elements within the feed container that have the data-video-id attribute
-        const videoElements = feedContainerRef.current ? feedContainerRef.current.querySelectorAll('video[data-video-id]') : [];
+        const scrollableContainerRect = centerColumnRef.current.getBoundingClientRect();
+        const videoElements = feedContainerRef.current.querySelectorAll('video[data-video-id]');
 
         videoElements.forEach(videoEl => {
-            const rect = videoEl.getBoundingClientRect();
-            // Check if video is within viewport at all
-            if (rect.bottom < 0 || rect.top > window.innerHeight) {
-                 // If this video was the active one, pause it by setting activeVideoId to null
-                if (videoEl.dataset.videoId === activeVideoId && activeVideoId !== null) {
-                    // This logic is a bit complex here. If it scrolls out, we want to pause it.
-                    // The simplest is to set newActiveVideoId to null if the current active one is out.
-                    // However, another video might be coming into view.
-                }
-                return; // Skip videos not in viewport
+            const rect = videoEl.getBoundingClientRect(); // rect is relative to the viewport
+
+            const videoTopInContainer = rect.top - scrollableContainerRect.top;
+            const videoBottomInContainer = rect.bottom - scrollableContainerRect.top;
+
+            if (videoBottomInContainer < 0 || videoTopInContainer > centerColumnRef.current.clientHeight) {
+                return;
             }
 
-            const videoCenterY = rect.top + rect.height / 2;
-            const viewportCenterY = window.innerHeight / 2;
-            const distance = Math.abs(videoCenterY - viewportCenterY);
+            const videoCenterYInViewport = rect.top + rect.height / 2;
+            const containerViewportCenterY = scrollableContainerRect.top + centerColumnRef.current.clientHeight / 2;
+            const distance = Math.abs(videoCenterYInViewport - containerViewportCenterY);
 
-            // Consider video if its center is "close enough" to viewport center
-            // and a significant portion is visible
-            const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
-            const isSufficientlyVisible = visibleHeight > videoEl.clientHeight * 0.5; // e.g., >50% visible
+            const visibleHeightInContainer = Math.min(videoBottomInContainer, centerColumnRef.current.clientHeight) - Math.max(videoTopInContainer, 0);
+            const isSufficientlyVisible = visibleHeightInContainer > videoEl.clientHeight * 0.5;
 
             if (isSufficientlyVisible && distance < minDistanceToCenter) {
-                 // Prefer videos whose center is closer to the viewport center
-                if (distance < (videoEl.clientHeight / 2) ) { // Prioritize if center is within video's own half-height
-                    minDistanceToCenter = distance;
-                    newActiveVideoId = videoEl.dataset.videoId;
-                } else if (newActiveVideoId === null && distance < minDistanceToCenter) {
-                    // Fallback if no video is ideally centered but this one is the best candidate so far
-                    minDistanceToCenter = distance;
-                    newActiveVideoId = videoEl.dataset.videoId;
-                }
+                minDistanceToCenter = distance;
+                newActiveVideoId = videoEl.dataset.videoId;
             }
         });
-
-        // If activeVideoId element is no longer visible or sufficiently centered,
-        // and no new video is centered, set activeVideoId to null to pause.
-        if (activeVideoId && newActiveVideoId !== activeVideoId) {
-            const currentActiveVideoElement = feedContainerRef.current ? feedContainerRef.current.querySelector(`video[data-video-id="${activeVideoId}"]`) : null;
-            if (currentActiveVideoElement) {
-                const rect = currentActiveVideoElement.getBoundingClientRect();
-                const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
-                if (rect.bottom < 0 || rect.top > window.innerHeight || visibleHeight < currentActiveVideoElement.clientHeight * 0.5) {
-                    // Current active video scrolled out of "active zone"
-                    // If no *new* video took its place, newActiveVideoId would be null (or different)
-                    // If newActiveVideoId is null here, it means nothing is centered, so pause current.
-                }
-            } else if (newActiveVideoId === null) {
-                 // Current active ID is stale (element removed?) and no new one, so set to null
-            }
-        }
-
 
         if (newActiveVideoId !== activeVideoId) {
             setActiveVideoId(newActiveVideoId);
         }
-    }, [activeVideoId]); // Dependency: activeVideoId to allow comparison
+    }, [activeVideoId]); // Removed feedContainerRef from deps as it's stable
 
     const debouncedScrollHandler = useCallback(debounce(handleScroll, 150), [handleScroll]);
 
+    const fetchMoreRecommendations = useCallback(async () => {
+        if (!hasNextPage || isFetchingMore) {
+            return;
+        }
+
+        setIsFetchingMore(true);
+        setFetchMoreError('');
+        const nextPage = currentPage + 1;
+
+        try {
+            const response = await recommenderService.getRecommendations({ page: nextPage });
+            if (response && response.results) {
+                setRecommendations(prev => [...prev, ...response.results]);
+                setCurrentPage(nextPage);
+                setHasNextPage(response.next !== null);
+            } else {
+                setHasNextPage(false); // Stop if response or results are not as expected
+            }
+        } catch (err) {
+            console.error(`Failed to fetch more recommendations (page ${nextPage}):`, err);
+            setFetchMoreError('Could not load more items.');
+            // Optionally setHasNextPage(false) here to stop retries on error
+        } finally {
+            setIsFetchingMore(false);
+        }
+    }, [hasNextPage, isFetchingMore, currentPage]);
 
     useEffect(() => {
-        const fetchRecommendations = async () => {
-            setIsLoading(true);
-            setError('');
-            try {
-                const data = await recommenderService.getRecommendations();
-                // Assuming data is the array of items
-                setRecommendations(data || []); // Ensure data is an array
-            } catch (err) {
-                console.error("Failed to fetch recommendations:", err);
-                setError('Something went wrong. Please try again later.');
-                setRecommendations([]);
-            } finally {
-                setIsLoading(false);
+        const scrollableElement = centerColumnRef.current;
+
+        const handleDocumentScroll = () => {
+            if (!scrollableElement) return;
+            // For video activation (debounced)
+            debouncedScrollHandler();
+
+            // For infinite scroll
+            if (scrollableElement.scrollTop + scrollableElement.clientHeight >= scrollableElement.scrollHeight - 300) {
+                fetchMoreRecommendations();
             }
         };
 
-        fetchRecommendations();
-    }, []);
-
-    useEffect(() => {
-        // Using feedContainerRef.current if a specific scrollable div, otherwise window
-        const scrollableElement = feedContainerRef.current || window;
-        scrollableElement.addEventListener('scroll', debouncedScrollHandler, { passive: true });
-        // Initial check in case a video is already centered on load
-        debouncedScrollHandler();
+        if (scrollableElement) {
+            scrollableElement.addEventListener('scroll', handleDocumentScroll, { passive: true });
+            debouncedScrollHandler(); // Initial check for video activation
+        }
 
         return () => {
-            scrollableElement.removeEventListener('scroll', debouncedScrollHandler);
+            if (scrollableElement) {
+                scrollableElement.removeEventListener('scroll', handleDocumentScroll);
+            }
         };
-    }, [debouncedScrollHandler]);
+    }, [debouncedScrollHandler, fetchMoreRecommendations]);
 
-    // Effect for handling activeVideoId changes (view counting and watch time tracking)
+    // Engagement Tracking useEffect
     useEffect(() => {
-        const currentActiveVideoId = activeVideoId; // Capture current activeId for use in cleanup/next effect run
-        const previousActiveVideoId = prevActiveVideoIdRef.current; // Get ID of video that was active before this change
+        const currentActiveVideoId = activeVideoId;
+        const previousActiveVideoId = prevActiveVideoIdRef.current;
 
-        // Cleanup for the *previous* active video
         if (previousActiveVideoId && previousActiveVideoId !== currentActiveVideoId) {
-            console.log(`Video ${previousActiveVideoId} is no longer active. Cleaning up timers and recording final watch time.`);
             clearTimeout(viewCountTimeoutIdRef.current);
             clearInterval(watchTimeIntervalIdRef.current);
-            watchTimeIntervalIdRef.current = null; // Important to nullify after clearing
-
+            watchTimeIntervalIdRef.current = null;
             const elapsedTimeMs = Date.now() - activeVideoStartTimeRef.current;
-            // Only record if it was active for a meaningful duration since last full interval or initial play
-            if (elapsedTimeMs > 1000) { // e.g., more than 1 second total active time
+            if (elapsedTimeMs > 1000) {
                 const timeSinceLastFullUpdateMs = elapsedTimeMs % WATCH_TIME_UPDATE_INTERVAL;
-                // Record remaining fraction if significant, or if total time itself is significant but less than interval
                 if (timeSinceLastFullUpdateMs > 1000 || (elapsedTimeMs < WATCH_TIME_UPDATE_INTERVAL && elapsedTimeMs > 1000)) {
                     const remainingWatchTimeSec = timeSinceLastFullUpdateMs / 1000;
-                    console.log(`Recording final engagement for ${previousActiveVideoId}: ${remainingWatchTimeSec.toFixed(2)}s`);
                     recordEngagement(previousActiveVideoId, remainingWatchTimeSec)
                         .catch(err => console.error(`Error recording final engagement for ${previousActiveVideoId}:`, err));
                 }
             }
         }
 
-        // Setup for the *new* active video
         if (currentActiveVideoId) {
-            console.log(`Video ${currentActiveVideoId} became active.`);
             activeVideoStartTimeRef.current = Date.now();
-
-            // Clear any existing timeout for view count (shouldn't be necessary if logic is correct, but safe)
             clearTimeout(viewCountTimeoutIdRef.current);
             viewCountTimeoutIdRef.current = setTimeout(() => {
-                console.log(`Recording view for ${currentActiveVideoId} after ${VIEW_COUNT_DELAY}ms delay.`);
-                recordEngagement(currentActiveVideoId, 0) // Pass 0 for view count
+                recordEngagement(currentActiveVideoId, 0)
                     .catch(err => console.error(`Error recording view for ${currentActiveVideoId}:`, err));
             }, VIEW_COUNT_DELAY);
 
-            // Clear any existing interval for watch time (safety, usually cleared by previous video's cleanup)
             clearInterval(watchTimeIntervalIdRef.current);
             watchTimeIntervalIdRef.current = setInterval(() => {
-                console.log(`Recording periodic watch time for ${currentActiveVideoId}: ${WATCH_TIME_UPDATE_INTERVAL / 1000}s`);
                 recordEngagement(currentActiveVideoId, WATCH_TIME_UPDATE_INTERVAL / 1000)
                     .catch(err => console.error(`Error recording watch time for ${currentActiveVideoId}:`, err));
             }, WATCH_TIME_UPDATE_INTERVAL);
         } else {
-            // No video is active
-            activeVideoStartTimeRef.current = 0; // Reset start time
+            activeVideoStartTimeRef.current = 0;
         }
 
-        // Update ref for previous active video ID for the next run
         prevActiveVideoIdRef.current = currentActiveVideoId;
 
-        // Cleanup function for when the component unmounts or activeVideoId changes again
         return () => {
-            console.log(`Cleanup effect for activeVideoId: ${currentActiveVideoId}. Clearing view timer and watch interval.`);
             clearTimeout(viewCountTimeoutIdRef.current);
             clearInterval(watchTimeIntervalIdRef.current);
             watchTimeIntervalIdRef.current = null;
-            // Final engagement for the video that was active when component unmounts (or before activeId changes)
-            // This logic is mostly covered by the "Cleanup for the *previous* active video" part at the start of the effect
-            // when activeVideoId changes to null or another ID.
-            // However, for component unmount, this ensures the very last active video is processed.
-            if (currentActiveVideoId && activeVideoStartTimeRef.current > 0) { // Check if a video was indeed active
+            if (currentActiveVideoId && activeVideoStartTimeRef.current > 0) {
                  const elapsedTimeMsUnmount = Date.now() - activeVideoStartTimeRef.current;
                  if (elapsedTimeMsUnmount > 1000) {
                     const timeSinceLastFullUpdateMsUnmount = elapsedTimeMsUnmount % WATCH_TIME_UPDATE_INTERVAL;
                     if (timeSinceLastFullUpdateMsUnmount > 1000 || (elapsedTimeMsUnmount < WATCH_TIME_UPDATE_INTERVAL && elapsedTimeMsUnmount > 1000) ) {
                         const remainingWatchTimeSecUnmount = timeSinceLastFullUpdateMsUnmount / 1000;
-                        console.log(`Recording final engagement on unmount/cleanup for ${currentActiveVideoId}: ${remainingWatchTimeSecUnmount.toFixed(2)}s`);
                         recordEngagement(currentActiveVideoId, remainingWatchTimeSecUnmount)
                             .catch(err => console.error(`Error recording final engagement (unmount/cleanup) for ${currentActiveVideoId}:`, err));
                     }
                  }
-                 activeVideoStartTimeRef.current = 0; // Reset on cleanup
+                 activeVideoStartTimeRef.current = 0;
             }
         };
-    }, [activeVideoId]); // Re-run this effect when activeVideoId changes
+    }, [activeVideoId]);
 
 
-    // Basic styles for dark theme consistency
-    const pageStyle = {
-        padding: '0px',
-    };
-    const headingStyle = {
-        color: '#bb86fc',
-        marginBottom: '25px',
-        fontSize: '2em',
-        textAlign: 'center',
-        borderBottom: '1px solid #333',
-        paddingBottom: '10px',
-    };
-    const feedContainerStyle = {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', // Responsive grid
-        gap: '0px', // Gap is handled by card margins or padding if needed
-        // If using feedContainerRef for scroll, it needs overflow properties:
-        // overflowY: 'auto',
-        // height: 'calc(100vh - YOUR_HEADER_HEIGHT)', // Example calculation
-    };
-    const feedOuterContainerStyle = { // Use this if you want a specific scrollable area
-        // For window scroll, this might not be needed or just be a simple div
+    // Engagement Tracking useEffect
+    useEffect(() => {
+        const currentActiveVideoId = activeVideoId;
+        const previousActiveVideoId = prevActiveVideoIdRef.current;
+
+        if (previousActiveVideoId && previousActiveVideoId !== currentActiveVideoId) {
+            clearTimeout(viewCountTimeoutIdRef.current);
+            clearInterval(watchTimeIntervalIdRef.current);
+            watchTimeIntervalIdRef.current = null;
+            const elapsedTimeMs = Date.now() - activeVideoStartTimeRef.current;
+            if (elapsedTimeMs > 1000) {
+                const timeSinceLastFullUpdateMs = elapsedTimeMs % WATCH_TIME_UPDATE_INTERVAL;
+                if (timeSinceLastFullUpdateMs > 1000 || (elapsedTimeMs < WATCH_TIME_UPDATE_INTERVAL && elapsedTimeMs > 1000)) {
+                    const remainingWatchTimeSec = timeSinceLastFullUpdateMs / 1000;
+                    recordEngagement(previousActiveVideoId, remainingWatchTimeSec)
+                        .catch(err => console.error(`Error recording final engagement for ${previousActiveVideoId}:`, err));
+                }
+            }
+        }
+
+        if (currentActiveVideoId) {
+            activeVideoStartTimeRef.current = Date.now();
+            clearTimeout(viewCountTimeoutIdRef.current);
+            viewCountTimeoutIdRef.current = setTimeout(() => {
+                recordEngagement(currentActiveVideoId, 0)
+                    .catch(err => console.error(`Error recording view for ${currentActiveVideoId}:`, err));
+            }, VIEW_COUNT_DELAY);
+
+            clearInterval(watchTimeIntervalIdRef.current);
+            watchTimeIntervalIdRef.current = setInterval(() => {
+                recordEngagement(currentActiveVideoId, WATCH_TIME_UPDATE_INTERVAL / 1000)
+                    .catch(err => console.error(`Error recording watch time for ${currentActiveVideoId}:`, err));
+            }, WATCH_TIME_UPDATE_INTERVAL);
+        } else {
+            activeVideoStartTimeRef.current = 0;
+        }
+
+        prevActiveVideoIdRef.current = currentActiveVideoId;
+
+        return () => {
+            clearTimeout(viewCountTimeoutIdRef.current);
+            clearInterval(watchTimeIntervalIdRef.current);
+            watchTimeIntervalIdRef.current = null;
+            if (currentActiveVideoId && activeVideoStartTimeRef.current > 0) {
+                 const elapsedTimeMsUnmount = Date.now() - activeVideoStartTimeRef.current;
+                 if (elapsedTimeMsUnmount > 1000) {
+                    const timeSinceLastFullUpdateMsUnmount = elapsedTimeMsUnmount % WATCH_TIME_UPDATE_INTERVAL;
+                    if (timeSinceLastFullUpdateMsUnmount > 1000 || (elapsedTimeMsUnmount < WATCH_TIME_UPDATE_INTERVAL && elapsedTimeMsUnmount > 1000) ) {
+                        const remainingWatchTimeSecUnmount = timeSinceLastFullUpdateMsUnmount / 1000;
+                        recordEngagement(currentActiveVideoId, remainingWatchTimeSecUnmount)
+                            .catch(err => console.error(`Error recording final engagement (unmount/cleanup) for ${currentActiveVideoId}:`, err));
+                    }
+                 }
+                 activeVideoStartTimeRef.current = 0;
+            }
+        };
+    }, [activeVideoId]);
+
+    // ========== STYLES START ==========
+    const HEADER_HEIGHT = '60px';
+
+    const basePageStyle = { // For loading and error states primarily
+        padding: '20px',
+        backgroundColor: '#000',
+        color: '#fff',
+        minHeight: `calc(100vh - ${HEADER_HEIGHT})`,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
     };
 
-     const loadingStyle = {
+    const threeColumnPageStyle = {
+        display: 'flex',
+        flexDirection: 'column', // Mobile-first: stack center column
+        height: `calc(100vh - ${HEADER_HEIGHT})`,
+        width: '100%',
+        backgroundColor: '#000',
+    };
+
+    const sideColumnStyle = { // Mobile: hidden
+        display: 'none',
+        // Desktop styles will make this visible and define flex properties
+        backgroundColor: '#121212', // Placeholder style
+        padding: '20px',
+        color: '#fff',
+    };
+
+    const centerColumnStyle = { // Mobile: full width
+        flex: '1 1 100%',
+        width: '100%',
+        overflowY: 'auto',
+        height: '100%',
+        scrollSnapType: 'y mandatory',
+        padding: '0',
+    };
+
+    const feedContainerStyle = { // Direct wrapper for cards inside center column
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+    };
+
+    const cardWrapperStyle = {
+        scrollSnapAlign: 'start',
+        width: '100%',
+        maxWidth: '700px',
+        minHeight: '90vh',
+        margin: '0 auto 20px auto',
+        padding: '1px 0',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+    };
+
+    const messageStyle = { // For loading/error/no items messages
         textAlign: 'center',
         fontSize: '1.2em',
         marginTop: '50px',
-    };
-    const errorStyle = {
-        textAlign: 'center',
-        fontSize: '1.2em',
-        color: '#cf6679', // Material dark theme error color
-        marginTop: '50px',
+        height: 'calc(100vh - 100px)', // Try to center message if page is empty
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
     };
 
+    const desktopStyles = `
+      @media (min-width: 768px) {
+        .three-column-page {
+          flex-direction: row;
+        }
+        .left-column {
+          display: flex; flex-direction: column;
+          flex: 0 0 20%; max-width: 300px;
+          background-color: #121212; padding: 20px; color: #fff;
+        }
+        .center-column {
+          flex: 1 1 60%;
+        }
+        .right-column {
+          display: flex; flex-direction: column;
+          flex: 0 0 20%; max-width: 300px;
+          background-color: #121212; padding: 20px; color: #fff;
+        }
+      }
+    `;
+    // ========== STYLES END ==========
 
     if (isLoading) {
-        return <div style={pageStyle}><p style={loadingStyle}>Loading recommendations...</p></div>;
+        return <div style={basePageStyle}><p style={messageStyle}>Loading recommendations...</p></div>;
     }
 
     if (error) {
-        return <div style={pageStyle}><p style={errorStyle}>{error}</p></div>;
+        return <div style={basePageStyle}><p style={{...messageStyle, color: '#cf6679'}}>{error}</p></div>;
     }
 
     return (
-        <div style={pageStyle}>
-            {/* <h2 style={headingStyle}>For You - Recommended Content</h2> */} {/* Changed heading slightly */}
-            {recommendations.length === 0 ? (
-                <p style={{textAlign: 'center', color: '#aaa'}}>
-                    No recommendations available at the moment.
-                    Try interacting with some content to get personalized suggestions!
-                </p>
-            ) : (
-                <div ref={feedContainerRef} style={feedContainerStyle}> {/* Attach ref here */}
-                    {recommendations.map(item => {
-                        if (item.type === 'post' && item.hasOwnProperty('caption')) {
-                            // Pass id and isPlaying to PostCard
-                            // PostCard will internally decide if it renders a video tag based on item.video
-                            return (
-                                <PostCard
-                                    key={`post-${item.id}`}
-                                    post={item}
-                                    id={item.id.toString()}
-                                    isPlaying={item.id.toString() === activeVideoId}
-                                />
-                            );
-                        } else if (item.type === 'video' && item.hasOwnProperty('title') && item.hasOwnProperty('uploader_username')) {
-                            // Pass id and isPlaying to VideoCard
-                            return (
-                                <VideoCard
-                                    key={`video-${item.id}`}
-                                    video={item}
-                                    id={item.id.toString()}
-                                    isPlaying={item.id.toString() === activeVideoId}
-                                />
-                            );
-                        } else if (item.type === 'ad' || item.is_ad === true) {
-                            return <AdCard key={`ad-${item.id}`} ad={item} />;
-                        } else {
-                            console.warn("Unknown or malformed item type in recommendations:", item);
-                            return (
-                                <div key={`unknown-${item.id || Math.random()}`} style={{border: '1px dashed red', padding: '10px', margin: '0', color: '#fff'}}>
-                                    <p>Unknown item type: {item.type || 'N/A'}</p>
-                                    <pre style={{whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.8em'}}>{JSON.stringify(item, null, 2)}</pre>
-                                </div>
-                            );
-                        }
-                    })}
+        <>
+            <style>{desktopStyles}</style>
+            <div className="three-column-page" style={threeColumnPageStyle}>
+                <div className="left-column" style={sideColumnStyle}>
+                    <p>Left Column Placeholder</p>
                 </div>
-            )}
-        </div>
+
+                <div ref={centerColumnRef} className="center-column" style={centerColumnStyle}>
+                    {recommendations.length === 0 && !isFetchingMore && !isLoading ? ( // Adjusted condition to avoid showing when initial loading
+                        <p style={messageStyle}>
+                            No recommendations available at the moment.
+                            {fetchMoreError && <><br /><span>{fetchMoreError}</span></>}
+                        </p>
+                    ) : (
+                        <div ref={feedContainerRef} style={feedContainerStyle}>
+                            {recommendations.map(item => {
+                                const itemKey = item.type ? `${item.type}-${item.id}` : `item-${item.id || recommendations.indexOf(item)}`;
+                                return (
+                                    <div key={itemKey} style={cardWrapperStyle}>
+                                        {item.type === 'post' && item.hasOwnProperty('caption') ? (
+                                            <PostCard
+                                                key={itemKey} // Key should be on the outermost element in map
+                                                post={item}
+                                                id={item.id.toString()}
+                                                isPlaying={item.id.toString() === activeVideoId}
+                                            />
+                                        ) : item.type === 'video' && item.hasOwnProperty('title') && item.hasOwnProperty('uploader_username') ? (
+                                            <VideoCard
+                                                key={itemKey}
+                                                video={item}
+                                                id={item.id.toString()}
+                                                isPlaying={item.id.toString() === activeVideoId}
+                                            />
+                                        ) : (item.type === 'ad' || item.is_ad === true) ? (
+                                            <AdCard key={itemKey} ad={item} />
+                                        ) : (
+                                            <div key={itemKey || Math.random()} style={{border: '1px dashed red', padding: '10px', color: '#fff'}}>
+                                                <p>Unknown item type: {item.type || 'N/A'}</p>
+                                                <pre style={{whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.8em'}}>{JSON.stringify(item, null, 2)}</pre>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {isFetchingMore && (
+                        <p style={{ textAlign: 'center', padding: '20px', color: '#ccc' }}>Loading more...</p>
+                    )}
+                    {fetchMoreError && !isFetchingMore && ( // Removed hasNextPage check from here to always show error if it occurs
+                         <div style={{ textAlign: 'center', padding: '20px', color: '#cf6679' }}>
+                            <p>{fetchMoreError} <button onClick={fetchMoreRecommendations} style={{color: '#bb86fc', background: 'none', border: '1px solid #bb86fc', padding: '5px 10px', cursor: 'pointer'}}>Retry</button></p>
+                        </div>
+                    )}
+                    {!hasNextPage && !isFetchingMore && recommendations.length > 0 && (
+                         <p style={{ textAlign: 'center', padding: '20px', color: '#aaa' }}>You've reached the end!</p>
+                    )}
+                </div>
+
+                <div className="right-column" style={sideColumnStyle}>
+                    <p>Right Column Placeholder</p>
+                </div>
+            </div>
+        </>
     );
 };
 

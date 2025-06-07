@@ -13,6 +13,9 @@ import RegisterPage from './pages/Register';
 import AdPaymentSuccess from './pages/AdPaymentSuccess';
 import AdPaymentCancel from './pages/AdPaymentCancel';
 import AdCenter from './pages/AdCenter';
+import MyAdsDashboard from './pages/MyAdsDashboard';
+import AdEditPage from './pages/AdEditPage'; // Import AdEditPage
+
 
 function Logout() {
   localStorage.clear();
@@ -35,8 +38,10 @@ function App() {
         <Route path="/your-store" element={<ProtectedRoute><MainLayout><ProfileStoreEdit /></MainLayout></ProtectedRoute>} />
         <Route path="/create-post" element={<ProtectedRoute><MainLayout><CreatePost /></MainLayout></ProtectedRoute>} />
         <Route path="/ad-center" element={<ProtectedRoute><MainLayout><AdCenter /></MainLayout></ProtectedRoute>} />
+        <Route path="/ad-dashboard" element={<ProtectedRoute><MainLayout><MyAdsDashboard /></MainLayout></ProtectedRoute>} />
         <Route path="/ad-payment-success" element={<ProtectedRoute><MainLayout><AdPaymentSuccess /></MainLayout></ProtectedRoute>} />
         <Route path="/ad-payment-cancel" element={<ProtectedRoute><MainLayout><AdPaymentCancel /></MainLayout></ProtectedRoute>} />
+        <Route path="/ads/:adId/edit" element={<ProtectedRoute><MainLayout><AdEditPage /></MainLayout></ProtectedRoute>} /> {/* New route for editing ads */}
       </Routes>
     </BrowserRouter>
   );

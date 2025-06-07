@@ -7,6 +7,7 @@ from .serializers import (
     FollowSerializer, FollowerSerializer, FollowingSerializer, CommentSerializer # Added CommentSerializer
 )
 from .models import Product, Post, UserProfile, Follow, PostLike, Comment # Added Comment model
+from recommender.models import Video, UserVideoInteraction, UserActivityKeyword # Added UserActivityKeyword
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from rest_framework.views import APIView # Added APIView for PostLikeToggleView
@@ -15,6 +16,32 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import logging # Import logging
 
 logger = logging.getLogger(__name__) # Define logger for this module
+
+
+# Helper function to log keyword interactions
+def log_keywords_for_post_interaction(user, post, interaction_type, score=1.0):
+    """
+    Logs keywords from a post for a given user interaction.
+    """
+    if not user or not post or not hasattr(post, 'keywords') or not post.keywords:
+        return
+
+    try:
+        keywords_str = post.keywords
+        keywords_list = [keyword.strip().lower() for keyword in keywords_str.split(',') if keyword.strip()]
+
+        for keyword in keywords_list:
+            if keyword: # Ensure keyword is not empty after strip and lower
+                UserActivityKeyword.objects.create(
+                    user=user,
+                    keyword=keyword,
+                    source_post=post,
+                    interaction_type=interaction_type,
+                    interaction_score=score
+                )
+        # logger.info(f"Logged keywords for user {user.id}, post {post.id}, type {interaction_type}, keywords: {keywords_list}")
+    except Exception as e:
+        logger.error(f"Error logging keyword interaction for user {user.id}, post {post.id}: {e}", exc_info=True)
 
 
 # Custom Permission Class
@@ -166,6 +193,8 @@ class PostLikeToggleView(APIView):
             return Response({"detail": "You have already liked this post."}, status=status.HTTP_400_BAD_REQUEST)
 
         PostLike.objects.create(user=user, post=post_instance) # Use post_instance
+        # Log keyword interaction for like
+        log_keywords_for_post_interaction(user, post_instance, 'like', score=1.5)
         return Response({"detail": f"Post {post_id} liked."}, status=status.HTTP_201_CREATED)
 
     def delete(self, request, post_id):
@@ -197,7 +226,34 @@ class CommentListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         post_id = self.kwargs.get('post_pk')
         post = get_object_or_404(Post, id=post_id)
-        serializer.save(user=self.request.user, post=post)
+        comment = serializer.save(user=self.request.user, post=post) # Assign saved comment
+
+        # Log keyword interaction for comment
+        log_keywords_for_post_interaction(self.request.user, post, 'comment', score=2.0)
+
+        # Update UserVideoInteraction if the post is linked to a video
+        try:
+            if hasattr(post, 'recommender_video_entry') and post.recommender_video_entry:
+                video = post.recommender_video_entry # Access the related Video object
+                user = self.request.user # Already defined as self.request.user
+
+                if user.is_authenticated: # Ensure user is authenticated
+                    interaction, created = UserVideoInteraction.objects.get_or_create(
+                        user=user,
+                        video=video,
+                        defaults={'commented': True} # Set commented true on creation
+                    )
+                    if not created: # If interaction already existed
+                        interaction.commented = True
+                        interaction.save(update_fields=['commented'])
+
+                    logger.info(f"UserVideoInteraction updated for comment by User {user.id} on Video {video.id}. 'commented' set to True.")
+            else:
+                logger.info(f"Comment created for Post {post_id}, but it's not linked to a recommender.Video. No UserVideoInteraction updated.")
+        except Video.DoesNotExist: # This specific exception for Video model
+            logger.error(f"Video associated with Post {post_id} not found. Cannot update UserVideoInteraction for comment.")
+        except Exception as e: # Catch other potential errors
+            logger.error(f"Error updating UserVideoInteraction for comment on Post {post_id}: {e}", exc_info=True)
 
 
 class RecordEngagementView(APIView):

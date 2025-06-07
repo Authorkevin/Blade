@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom'; // Import Link
 import adService from '../services/adService';
 import styles from './MyAdsDashboard.styles'; // We'll create this file for styles
 
@@ -130,6 +131,15 @@ const MyAdsDashboard = () => {
                                     <td style={styles.td}>{ad.clicks !== undefined ? ad.clicks.toLocaleString() : '0'}</td>
                                     <td style={styles.td}>{calculateCTR(ad.clicks, ad.impressions)}</td>
                                     <td style={styles.td}>
+                                        {/* Edit button - generally available if ad is not 'completed' */}
+                                        {ad.status !== 'completed' && (
+                                            <Link
+                                                to={`/ads/${ad.id}/edit`}
+                                                style={{...styles.actionButton, ...styles.editButton}}
+                                            >
+                                                Edit
+                                            </Link>
+                                        )}
                                         {ad.status === 'live' && (
                                             <button
                                                 onClick={() => handleUpdateAdStatus(ad.id, 'paused')}
@@ -144,8 +154,7 @@ const MyAdsDashboard = () => {
                                                 Resume
                                             </button>
                                         )}
-                                        {/* Allow deletion for most statuses except perhaps 'completed' or if it has active billing issues */}
-                                        {/* For now, enable delete for non-completed ads */}
+                                        {/* Allow deletion for most statuses */}
                                         {ad.status !== 'completed' && (
                                              <button
                                                 onClick={() => handleDeleteAd(ad.id)}

@@ -203,8 +203,8 @@ def build_interaction_data_and_matrices(force_rebuild=False):
     logger.info("Recommender data build process completed.")
 
 
-def get_recommendations_for_user(user_id, num_recommendations=10):
-    logger.info(f"Generating recommendations for user {user_id}, num_recommendations={num_recommendations}")
+def get_recommendations_for_user(user_id):
+    logger.info(f"Generating all recommendations for user {user_id} (pre-pagination)")
     recommended_items = []
     added_post_ids = set()
     current_user = None
@@ -221,8 +221,6 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
     superuser_posts_qs = Post.objects.filter(user__is_superuser=True).select_related('user').order_by('-created_at')
 
     for post in superuser_posts_qs:
-        if len(recommended_items) >= num_recommendations:
-            break
         # Only add if not by the current user (if current_user is known)
         if current_user and post.user.id == current_user.id:
             continue
@@ -234,26 +232,25 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
     # 2. Add other user posts (if space allows and if it's part of the requirement)
     # The issue: "Are posts that users create being displayed on the home page feed?" - implies general posts too.
     # "Ensure that all posts by superusers get recommended" - priority for superusers.
-    if len(recommended_items) < num_recommendations:
+    if True: # Logic to add other posts, no longer limited by num_recommendations here
         other_posts_qs = Post.objects.exclude(id__in=added_post_ids)                                      .select_related('user').order_by('-created_at')
         if current_user: # Exclude user's own posts
             other_posts_qs = other_posts_qs.exclude(user_id=current_user.id)
 
         for post in other_posts_qs:
-            if len(recommended_items) >= num_recommendations:
-                break
+            # No specific limit here, will be paginated later
             if post.id not in added_post_ids: # Ensure no duplicates if a post wasn't by superuser but caught here
                 recommended_items.append({'type': 'post', 'id': post.id, 'object': post})
                 added_post_ids.add(post.id)
         logger.info(f"Added {len(recommended_items) - len(added_post_ids)} other posts for user {user_id}. Total items after posts: {len(recommended_items)}")
 
 
-    # 3. Add video recommendations (if space allows)
-    num_video_recs_needed = num_recommendations - len(recommended_items)
+    # 3. Add video recommendations
+    # num_video_recs_needed is no longer used to limit here, fetch all relevant video recs
     video_recommendations_packaged = [] # To store {'type': 'video', 'id': ..., 'object': ...}
 
-    if num_video_recs_needed > 0:
-        logger.info(f"Need {num_video_recs_needed} video recommendations for user {user_id}.")
+    if True: # Always attempt to get video recommendations if applicable
+        logger.info(f"Fetching all potential video recommendations for user {user_id}.")
         # --- Start of adapted existing video recommendation logic ---
         if RECOMMENDER_DATA_CACHE["user_item_matrix_df"] is None or            RECOMMENDER_DATA_CACHE["item_similarity_matrix"] is None:
             logger.info("Recommender cache not populated for videos. Building now.")
@@ -280,8 +277,9 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
 
 
         # Fallback function (returns list of Video objects)
-        def get_fallback_video_recommendations(num_recs, user_id_for_fallback, excluded_video_ids=None):
-            logger.info(f"Using fallback for videos for user {user_id_for_fallback}, num_recs={num_recs}.")
+        # Removed num_recs from signature, it should return all relevant scored videos
+        def get_fallback_video_recommendations(user_id_for_fallback, excluded_video_ids=None):
+            logger.info(f"Using fallback for videos for user {user_id_for_fallback} (returning all relevant).")
             if excluded_video_ids is None:
                 excluded_video_ids = set()
 
@@ -333,7 +331,7 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
             # top_5_debug = [(v['video'].id, v['video'].title, v['score']) for v in scored_videos[:5]]
             # logger.debug(f"Fallback top 5 scored videos: {top_5_debug}")
 
-            return [v['video'] for v in scored_videos[:num_recs]]
+            return [v['video'] for v in scored_videos] # Return all scored videos
 
         cf_recommended_video_objects = []
 
@@ -387,7 +385,7 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
                         if aggregated_scores[cf_idx] == -np.inf: continue
                         video_id_res = video_idx_to_id.get(cf_idx) # Renamed
                         if video_id_res: temp_cf_video_ids.append(video_id_res)
-                        if len(temp_cf_video_ids) >= num_video_recs_needed: break
+                        # No limit based on num_video_recs_needed here for CF video selection
 
                     if temp_cf_video_ids:
                         video_obj_map = {v.id: v for v in Video.objects.filter(id__in=temp_cf_video_ids)}
@@ -403,12 +401,11 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
 
         # Package CF recommendations
         for video_obj in cf_recommended_video_objects:
-            if len(video_recommendations_packaged) < num_video_recs_needed:
-                video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
-            else:
-                break
+            # No limit based on num_video_recs_needed for packaging CF results
+            video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
 
-        num_fallback_needed = num_video_recs_needed - len(video_recommendations_packaged)
+        # num_fallback_needed is no longer the primary limiter for how many fallback items are fetched initially
+        # The fallback function will return all it can, and we add them if not already present from CF.
 
         # Determine interacted video IDs for exclusion in fallback
         user_matrix_idx = user_id_to_idx.get(user_id)
@@ -421,17 +418,19 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
                 if video_id:
                     interacted_video_ids_for_fallback_exclusion.add(video_id)
 
-        if num_fallback_needed > 0:
-            logger.info(f"Need {num_fallback_needed} more videos from fallback for user {user_id}.")
+        # Always attempt to get fallback if CF didn't provide enough, or to supplement.
+        # The definition of "enough" is now "as many good ones as possible" before pagination.
+        if True: # Logic to decide if fallback is needed (e.g. if CF results are very few, or always add some diversity)
+            logger.info(f"Fetching fallback videos for user {user_id} to supplement or if CF was insufficient.")
             # Pass interacted video IDs to exclude them from fallback
-            fallback_video_objects = get_fallback_video_recommendations(num_fallback_needed, user_id, excluded_video_ids=interacted_video_ids_for_fallback_exclusion)
-            for video_obj in fallback_video_objects: # This loop should be robust
-                if len(video_recommendations_packaged) < num_video_recs_needed: # Double check limit
-                    # Ensure not to add videos already recommended by CF, though CF list is usually small/specific
-                    if not any(rec_vid['id'] == video_obj.id for rec_vid in video_recommendations_packaged):
-                         video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
-                else:
-                    break # Stop if limit reached
+            # Fallback now returns all its relevant scored videos
+            fallback_video_objects = get_fallback_video_recommendations(user_id, excluded_video_ids=interacted_video_ids_for_fallback_exclusion)
+
+            # Add fallback videos if they are not already in the list from CF
+            # and we still want more video diversity (no hard limit here, view will paginate)
+            for video_obj in fallback_video_objects:
+                if not any(rec_vid['id'] == video_obj.id for rec_vid in video_recommendations_packaged):
+                    video_recommendations_packaged.append({'type': 'video', 'id': video_obj.id, 'object': video_obj})
         # --- End of adapted video recommendation logic ---
 
         recommended_items.extend(video_recommendations_packaged)
@@ -499,7 +498,85 @@ def get_recommendations_for_user(user_id, num_recommendations=10):
 
 
     logger.info(f"Generated {len(recommended_items)} total mixed recommendations for user {user_id}. Breakdown: Posts={len(added_post_ids)}, Videos={len(video_recommendations_packaged)}.")
-    return recommended_items[:num_recommendations] # Ensure final list does not exceed num_recommendations
+    return recommended_items # Return all items, pagination will be handled by the view
+
+
+import hashlib
+# import json # Not strictly needed if JSONField handles serialization directly
+
+# Placeholder for a fixed embedding dimension
+EMBEDDING_DIM = 10 # Using a small dimension for this placeholder
+
+def generate_simple_interest_embedding(user_interest_profile):
+    if not hasattr(user_interest_profile, 'keywords_summary') or not user_interest_profile.keywords_summary:
+        user_interest_profile.interest_embedding = None
+        # No save here, calling function (signal handler) will save.
+        return
+
+    # Sort keywords by score (descending)
+    # keywords_summary is like: {"keyword1": {"score": X, "last_interacted": Y}, ... }
+    sorted_keywords = sorted(
+        user_interest_profile.keywords_summary.items(),
+        key=lambda item: item[1].get('score', 0),
+        reverse=True
+    )
+
+    top_n = 5 # Consider top N keywords for the embedding
+    top_keywords = [item[0] for item in sorted_keywords[:top_n]]
+
+    if not top_keywords:
+        user_interest_profile.interest_embedding = None
+        # No save here
+        return
+
+    aggregated_embedding = [0.0] * EMBEDDING_DIM
+
+    for keyword in top_keywords:
+        # Generate a simple deterministic pseudo-vector based on keyword hash
+        # This is NOT a meaningful semantic vector.
+        hash_object = hashlib.md5(keyword.encode())
+        hex_dig = hash_object.hexdigest()
+        for i in range(EMBEDDING_DIM):
+            # Take parts of the hash and convert to a float between -1 and 1
+            # Ensure substring length is adequate for int conversion
+            sub_hex_start = (i*2) % len(hex_dig)
+            sub_hex_end = (i*2+2)
+            # Ensure sub_hex_end does not exceed len(hex_dig) and handle wrap around carefully for short hex_dig
+            if sub_hex_end > len(hex_dig):
+                 sub_hex_end = len(hex_dig) # take till end
+                 if sub_hex_start >= sub_hex_end and sub_hex_start < len(hex_dig) : # if start is valid but end is too short
+                     sub_hex = hex_dig[sub_hex_start] # take single char
+                 elif sub_hex_start >= len(hex_dig): # if start is out of bound
+                     sub_hex = "0"
+                 else:
+                     sub_hex = hex_dig[sub_hex_start:sub_hex_end]
+            else:
+                 sub_hex = hex_dig[sub_hex_start:sub_hex_end]
+
+            if not sub_hex: sub_hex = "0"
+
+            try:
+                val = int(sub_hex, 16)
+            except ValueError:
+                val = 0 # fallback if somehow sub_hex is not valid hex (e.g. if only one char was taken)
+                if len(sub_hex) == 1: # Try parsing single hex char
+                    try:
+                        val = int(sub_hex*2, 16) # e.g. 'a' -> 'aa'
+                    except ValueError:
+                        val=0
+
+
+            aggregated_embedding[i] += (val / 255.0 - 0.5) * 2 # Scale to roughly -1 to 1
+
+    # Normalize the aggregated embedding (simple averaging)
+    if top_keywords: # Avoid division by zero if top_keywords is empty (already checked but good practice)
+        final_embedding = [val / len(top_keywords) for val in aggregated_embedding]
+    else:
+        final_embedding = [0.0] * EMBEDDING_DIM # Should not happen due to earlier check
+
+    user_interest_profile.interest_embedding = final_embedding
+    # The calling signal handler will save the profile.
+
 
 def prime_recommender_cache_on_startup():
     """

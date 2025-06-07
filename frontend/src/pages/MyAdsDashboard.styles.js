@@ -110,6 +110,12 @@ const styles = {
         backgroundColor: '#f44336', // Red for delete
         color: '#ffffff',
     },
+    editButton: { // New style for Edit button
+        backgroundColor: '#2196f3', // Blue, similar to 'pending_approval' or a common edit color
+        color: '#ffffff',
+        textDecoration: 'none', // Remove underline from Link if styled as button
+        display: 'inline-block', // Ensure proper layout when Link is styled as button
+    },
 
     // Status indicators in table
     statusIndicator: {

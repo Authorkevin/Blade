@@ -20,9 +20,9 @@ const VideoCard = ({ video, isPlaying, id }) => {
     // This assumes 'video.id' is for recommender.Video and 'video.source_post_id' links to api.Post
     // Or, if video object itself is a Post that is a video, then video.id is the postID.
     // For VideoCard, usually 'id' prop is the video's own ID (recommender.Video.id).
-    // We need the Post ID for comments. Let's assume 'video.source_post_id' is passed.
-    // If not, try 'video.id' as a fallback if this VideoCard might also render Post objects.
-    const postIdForComments = video.source_post_id || video.id;
+    // We need the Post ID for comments. 'video.source_post' will now directly be the ID.
+    // If 'video.source_post' is null/undefined, existing conditionals will hide comment UI.
+    const postIdForComments = video.source_post;
 
 
     useEffect(() => {

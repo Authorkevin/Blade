@@ -11,9 +11,10 @@ from rest_framework.response import Response # Response is needed
 from rest_framework.permissions import IsAuthenticated, AllowAny # For original RecommendationView
 from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model
+from rest_framework.pagination import PageNumberPagination # Added for pagination
 from .utils import get_recommendations_for_user # This is now the original complex utils
 # prime_recommender_cache_on_startup is called in apps.py
-from .models import Video, UserVideoInteraction
+from .models import Video, UserVideoInteraction, UserActivityKeyword # Added UserActivityKeyword
 from .serializers import VideoSerializer, UserVideoInteractionSerializer # VideoSerializer is needed
 from api.serializers import PostSerializer # PostSerializer is needed
 from ads.serializers import AdSerializer # Add this import
@@ -24,34 +25,68 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+# Helper function to log keyword interactions from video tags
+def log_keywords_for_video_interaction(user, video, interaction_type, score=1.0):
+    """
+    Logs keywords (from video tags) for a given user interaction with a video.
+    """
+    if not user or not video or not hasattr(video, 'tags') or not video.tags:
+        return
+
+    try:
+        tags_str = video.tags
+        # Tags are comma-separated, similar to Post keywords
+        keywords_list = [tag.strip().lower() for tag in tags_str.split(',') if tag.strip()]
+
+        for keyword in keywords_list:
+            if keyword: # Ensure keyword is not empty
+                UserActivityKeyword.objects.create(
+                    user=user,
+                    keyword=keyword,
+                    source_video=video,
+                    interaction_type=interaction_type,
+                    interaction_score=score
+                )
+        # logger.info(f"Logged video tag keywords for user {user.id}, video {video.id}, type {interaction_type}, keywords: {keywords_list}")
+    except Exception as e:
+        logger.error(f"Error logging video tag keyword interaction for user {user.id}, video {video.id}: {e}", exc_info=True)
+
+
 class RecommendationView(APIView):
     permission_classes = [AllowAny]
+    pagination_class = PageNumberPagination
 
     def get(self, request):
         user = request.user
-        try:
-            num_recommendations = int(request.query_params.get('count', 10))
-            if not (0 < num_recommendations <= 50):
-                num_recommendations = 10
-        except ValueError:
-            num_recommendations = 10
+        # num_recommendations logic is removed, pagination handles page size
 
-        logger.info(f"Fetching {num_recommendations} recommendations for user {user.id} ({user.username}).")
+        logger.info(f"Fetching recommendations for user {user.id} ({user.username}).")
 
         try:
-            # This function now returns a list of dicts: {'type': 'post'/'video', 'id': ..., 'object': ...}
-            # from the original complex get_recommendations_for_user
-            recommended_items = get_recommendations_for_user(user.id, num_recommendations)
+            # get_recommendations_for_user now returns all items, no num_recommendations argument
+            all_recommended_items = get_recommendations_for_user(user.id)
         except Exception as e:
             logger.error(f"Error generating recommendations for user {user.id}: {e}", exc_info=True)
             return Response({"error": "Could not generate recommendations at this time."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        if not recommended_items:
+        if not all_recommended_items:
             logger.info(f"No recommendations found for user {user.id}.")
+            # If pagination is active, paginator.get_paginated_response will handle empty list.
+            # Otherwise, return a standard response.
+            paginator_instance = self.pagination_class()
+            page = paginator_instance.paginate_queryset([], request, view=self)
+            if page is not None: # Should be an empty list page
+                 return paginator_instance.get_paginated_response([]) # Pass empty list for serialization
             return Response({"message": "No recommendations available for you right now. Explore more content!", "items": []}, status=status.HTTP_200_OK)
 
-        serialized_items = []
-        for item in recommended_items: # item is a dict like {'type': 'post'/'video'/'ad', 'id': ..., 'object': ...}
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(all_recommended_items, request, view=self)
+
+        # Serialize the items (either on the page or all items if not paginated)
+        items_to_serialize = page if page is not None else all_recommended_items
+
+        serialized_page_items = []
+        for item in items_to_serialize: # item is a dict like {'type': 'post'/'video'/'ad', 'id': ..., 'object': ...}
             item_object = item.get('object')
             item_type = item.get('type')
 
@@ -62,23 +97,31 @@ class RecommendationView(APIView):
             if item_type == 'video':
                 serializer = VideoSerializer(item_object, context={'request': request})
                 item_data = serializer.data
-                item_data['type'] = 'video' # Explicitly set type
-                serialized_items.append(item_data)
+                item_data['type'] = 'video'
+                serialized_page_items.append(item_data)
             elif item_type == 'post':
                 serializer = PostSerializer(item_object, context={'request': request})
                 item_data = serializer.data
-                item_data['type'] = 'post' # Explicitly set type
-                serialized_items.append(item_data)
+                item_data['type'] = 'post'
+                serialized_page_items.append(item_data)
             elif item_type == 'ad':
                 ad_serializer = AdSerializer(item_object, context={'request': request})
                 item_data = ad_serializer.data
-                item_data['is_ad'] = True # Keep is_ad for clarity if frontend uses it
-                item_data['type'] = 'ad'   # Ensure type is present
-                serialized_items.append(item_data)
+                item_data['is_ad'] = True
+                item_data['type'] = 'ad'
+                serialized_page_items.append(item_data)
             else:
                 logger.warning(f"Unknown item type ('{item_type}') encountered in recommendations for user {request.user.id if request.user.is_authenticated else 'Anonymous'}")
 
-        return Response({"items": serialized_items}, status=status.HTTP_200_OK)
+        if page is not None:
+            return paginator.get_paginated_response(serialized_page_items)
+
+        # Fallback for when pagination is not triggered or page is None (e.g. not a ListAPIView, or paginator returned None)
+        # For APIView, paginate_queryset might return None if an error occurs or if it's not correctly set up.
+        # Standard DRF paginators usually raise an exception or return an empty list for empty pages if configured.
+        # This path ensures we still return data if pagination somehow yields None for the page object itself.
+        return Response({"items": serialized_page_items}, status=status.HTTP_200_OK)
+
 
 # UserVideoInteractionViewSet remains unchanged
 class UserVideoInteractionViewSet(viewsets.ModelViewSet):
@@ -152,7 +195,8 @@ class UserVideoInteractionViewSet(viewsets.ModelViewSet):
         # Re-simplifying to standard DRF: POST creates. Client must use PUT/PATCH for updates.
         # The UserVideoInteractionSerializer's `create` method should handle `unique_together`.
         # If a duplicate is POSTed, a ValidationError will be raised by default due to unique_together.
-        serializer.save(user=self.request.user)
+        instance = serializer.save(user=self.request.user)
+        self._log_video_keyword_interactions(instance)
 
 
     def perform_update(self, serializer):
@@ -162,4 +206,36 @@ class UserVideoInteractionViewSet(viewsets.ModelViewSet):
         """
         if serializer.instance.user != self.request.user and not self.request.user.is_staff:
             raise PermissionDenied("You do not have permission to edit this interaction.")
-        serializer.save()
+        instance = serializer.save()
+        self._log_video_keyword_interactions(instance)
+
+    def _log_video_keyword_interactions(self, instance):
+        """
+        Helper method to log keyword interactions based on the state of UserVideoInteraction instance.
+        """
+        if not instance or not instance.user or not instance.video:
+            return
+
+        user = instance.user
+        video = instance.video
+
+        # Log for like
+        if instance.liked is True:
+            log_keywords_for_video_interaction(user, video, 'like', score=1.5)
+
+        # Log for comment - check if this interaction implies a comment
+        # This relies on UserVideoInteraction.commented being set appropriately by other parts of the system
+        # (e.g., when a Comment model related to a Post that sources this Video is created)
+        # or if the interaction itself can be directly marked as 'commented'.
+        if instance.commented is True:
+            log_keywords_for_video_interaction(user, video, 'comment', score=2.0)
+
+        # Log for completed watch
+        if instance.completed_watch is True:
+            log_keywords_for_video_interaction(user, video, 'watch_complete', score=2.5)
+        # Log for significant watch time, if not already logged as 'watch_complete'
+        # to avoid double-counting the same core signal if completed_watch implies significant watch time.
+        elif instance.watch_time_seconds > 60: # Example threshold: 60 seconds
+            # Check if video duration is available to make a more relative assessment
+            # For now, using a fixed threshold.
+            log_keywords_for_video_interaction(user, video, 'watch_significant', score=1.0)

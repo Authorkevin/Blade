@@ -33,5 +33,12 @@ class RecommenderConfig(AppConfig):
         except Exception as e:
             # Log error but don't prevent app startup. Recommender might not work until fixed.
             logger.error(f"RecommenderConfig: Failed to prime recommender cache on startup: {e}", exc_info=True)
+
+        # Import signals to connect them
+        try:
+            import recommender.signals # noqa
+            logger.info("RecommenderConfig: Signals imported successfully.")
+        except ImportError as e:
+            logger.error(f"RecommenderConfig: Failed to import signals: {e}", exc_info=True)
         # else:
             # logger.info("RecommenderConfig: Skipping cache priming (not in runserver/gunicorn process).")

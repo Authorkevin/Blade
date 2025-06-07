@@ -7,6 +7,7 @@ User = get_user_model()
 class VideoSerializer(serializers.ModelSerializer):
     uploader_username = serializers.ReadOnlyField(source='uploader.username')
     video_url = serializers.SerializerMethodField() # New field
+    is_liked_by_user = serializers.SerializerMethodField() # Field for user like status
 
     class Meta:
         model = Video
@@ -15,6 +16,8 @@ class VideoSerializer(serializers.ModelSerializer):
             'upload_timestamp', 'tags',
             'duration_seconds',
             'video_url', # Added to fields
+            'is_liked_by_user', # Added to fields
+            'source_post', # Added source_post ID
         ]
         read_only_fields = ['uploader']
 
@@ -29,6 +32,12 @@ class VideoSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.video_file.url)
             return obj.video_file.url # Fallback if no request in context
         return None
+
+    def get_is_liked_by_user(self, obj):
+        user = self.context['request'].user
+        if user.is_authenticated:
+            return UserVideoInteraction.objects.filter(user=user, video=obj, liked=True).exists()
+        return False
 
 class UserVideoInteractionSerializer(serializers.ModelSerializer):
     user_username = serializers.ReadOnlyField(source='user.username')
