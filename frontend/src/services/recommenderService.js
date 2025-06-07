@@ -14,15 +14,28 @@ axiosInstance.interceptors.request.use(config => {
     return config;
 }, error => Promise.reject(error));
 
-export const getRecommendations = async (count = 10) => {
+export const getRecommendations = async (params = { page: 1 }) => { // Accept a params object, default to page 1
     try {
-        const response = await axiosInstance.get(`/recommendations/?count=${count}`);
-        // Ensure it returns an array even if items key is missing or response.data is unexpected
-        return response.data && Array.isArray(response.data.items) ? response.data.items : [];
+        // Construct query parameters. Only include page for now.
+        const queryParams = new URLSearchParams();
+        if (params && params.page) {
+            queryParams.append('page', params.page);
+        }
+        // If other parameters like page_size were needed, they could be added here.
+        // For example: if (params.pageSize) queryParams.append('page_size', params.pageSize);
+
+        const response = await axiosInstance.get(`/recommendations/?${queryParams.toString()}`);
+        // The backend's paginated response is expected to be in response.data directly
+        // It usually includes 'count', 'next', 'previous', 'results'
+        // Home.jsx expects an object with 'results' and 'next' for pagination logic
+        return response.data; // Return the whole response data for Home.jsx to handle
     } catch (error) {
         console.error('Error fetching recommendations:', error.response ? error.response.data : error.message);
-        // Return empty array on error to prevent frontend crashes if component expects array
-        return [];
+        // To align with Home.jsx's error handling and expectation of response.results
+        // we should throw the error or return a structure that indicates failure,
+        // or ensure Home.jsx handles this gracefully.
+        // For now, re-throwing allows Home.jsx's catch block to handle it.
+        throw error;
     }
 };
 

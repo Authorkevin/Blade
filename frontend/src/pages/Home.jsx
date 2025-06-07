@@ -37,13 +37,13 @@ const HomePage = () => {
                 const response = await recommenderService.getRecommendations({ page: 1 });
                 // console.log('Minimal: Service responded. Full response:', response); // Optional
 
-                if (response && response.results) {
-                    // console.log('Minimal: response.results is an array of length:', response.results.length); // Optional
-                    setRecommendations(response.results);
-                    setHasNextPage(response.next !== null); // Set hasNextPage from initial fetch
+                if (response && response.items) { // Changed from response.results to response.items
+                    // console.log('Minimal: response.items is an array of length:', response.items.length); // Optional
+                    setRecommendations(response.items); // Changed from response.results to response.items
+                    setHasNextPage(false); // Assuming no pagination with items structure for now
                     setCurrentPage(1); // Set current page for initial fetch
                 } else {
-                    // console.log('Minimal: response or response.results is missing/empty.'); // Optional
+                    // console.log('Minimal: response or response.items is missing/empty.'); // Optional
                     setRecommendations([]); // Ensure it's an empty array if data is not as expected
                     setHasNextPage(false); // No next page if data is invalid
                     // setError('Failed to load recommendations: Invalid data structure.'); // Optionally set error
@@ -122,12 +122,12 @@ const HomePage = () => {
 
         try {
             const response = await recommenderService.getRecommendations({ page: nextPage });
-            if (response && response.results) {
-                setRecommendations(prev => [...prev, ...response.results]);
+            if (response && response.items) { // Changed from response.results to response.items
+                setRecommendations(prev => [...prev, ...response.items]); // Changed from response.results to response.items
                 setCurrentPage(nextPage);
-                setHasNextPage(response.next !== null);
+                setHasNextPage(false); // Assuming no pagination with items structure for now
             } else {
-                setHasNextPage(false); // Stop if response or results are not as expected
+                setHasNextPage(false); // Stop if response or items are not as expected
             }
         } catch (err) {
             console.error(`Failed to fetch more recommendations (page ${nextPage}):`, err);
@@ -164,66 +164,7 @@ const HomePage = () => {
         };
     }, [debouncedScrollHandler, fetchMoreRecommendations]);
 
-    // Engagement Tracking useEffect
-    useEffect(() => {
-        const currentActiveVideoId = activeVideoId;
-        const previousActiveVideoId = prevActiveVideoIdRef.current;
-
-        if (previousActiveVideoId && previousActiveVideoId !== currentActiveVideoId) {
-            clearTimeout(viewCountTimeoutIdRef.current);
-            clearInterval(watchTimeIntervalIdRef.current);
-            watchTimeIntervalIdRef.current = null;
-            const elapsedTimeMs = Date.now() - activeVideoStartTimeRef.current;
-            if (elapsedTimeMs > 1000) {
-                const timeSinceLastFullUpdateMs = elapsedTimeMs % WATCH_TIME_UPDATE_INTERVAL;
-                if (timeSinceLastFullUpdateMs > 1000 || (elapsedTimeMs < WATCH_TIME_UPDATE_INTERVAL && elapsedTimeMs > 1000)) {
-                    const remainingWatchTimeSec = timeSinceLastFullUpdateMs / 1000;
-                    recordEngagement(previousActiveVideoId, remainingWatchTimeSec)
-                        .catch(err => console.error(`Error recording final engagement for ${previousActiveVideoId}:`, err));
-                }
-            }
-        }
-
-        if (currentActiveVideoId) {
-            activeVideoStartTimeRef.current = Date.now();
-            clearTimeout(viewCountTimeoutIdRef.current);
-            viewCountTimeoutIdRef.current = setTimeout(() => {
-                recordEngagement(currentActiveVideoId, 0)
-                    .catch(err => console.error(`Error recording view for ${currentActiveVideoId}:`, err));
-            }, VIEW_COUNT_DELAY);
-
-            clearInterval(watchTimeIntervalIdRef.current);
-            watchTimeIntervalIdRef.current = setInterval(() => {
-                recordEngagement(currentActiveVideoId, WATCH_TIME_UPDATE_INTERVAL / 1000)
-                    .catch(err => console.error(`Error recording watch time for ${currentActiveVideoId}:`, err));
-            }, WATCH_TIME_UPDATE_INTERVAL);
-        } else {
-            activeVideoStartTimeRef.current = 0;
-        }
-
-        prevActiveVideoIdRef.current = currentActiveVideoId;
-
-        return () => {
-            clearTimeout(viewCountTimeoutIdRef.current);
-            clearInterval(watchTimeIntervalIdRef.current);
-            watchTimeIntervalIdRef.current = null;
-            if (currentActiveVideoId && activeVideoStartTimeRef.current > 0) {
-                 const elapsedTimeMsUnmount = Date.now() - activeVideoStartTimeRef.current;
-                 if (elapsedTimeMsUnmount > 1000) {
-                    const timeSinceLastFullUpdateMsUnmount = elapsedTimeMsUnmount % WATCH_TIME_UPDATE_INTERVAL;
-                    if (timeSinceLastFullUpdateMsUnmount > 1000 || (elapsedTimeMsUnmount < WATCH_TIME_UPDATE_INTERVAL && elapsedTimeMsUnmount > 1000) ) {
-                        const remainingWatchTimeSecUnmount = timeSinceLastFullUpdateMsUnmount / 1000;
-                        recordEngagement(currentActiveVideoId, remainingWatchTimeSecUnmount)
-                            .catch(err => console.error(`Error recording final engagement (unmount/cleanup) for ${currentActiveVideoId}:`, err));
-                    }
-                 }
-                 activeVideoStartTimeRef.current = 0;
-            }
-        };
-    }, [activeVideoId]);
-
-
-    // Engagement Tracking useEffect
+    // Engagement Tracking useEffect (First Instance - KEEP THIS ONE)
     useEffect(() => {
         const currentActiveVideoId = activeVideoId;
         const previousActiveVideoId = prevActiveVideoIdRef.current;
@@ -379,6 +320,7 @@ const HomePage = () => {
 
     return (
         <>
+            {/* Original component JSX follows... */}
             <style>{desktopStyles}</style>
             <div className="three-column-page" style={threeColumnPageStyle}>
                 <div className="left-column" style={sideColumnStyle}>
